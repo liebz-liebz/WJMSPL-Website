@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WJMSPL Baseball</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="#/"><span class="brand-ball" aria-hidden="true"></span><span id="brand-name">WJMSPL</span></a>
+      <button class="nav-toggle" aria-expanded="false" aria-controls="site-nav">Menu</button>
+      <nav id="site-nav" class="site-nav">
+        <a href="#/schedule" data-route="schedule">Schedule</a>
+        <a href="#/standings" data-route="standings">Standings</a>
+        <a href="#/rosters" data-route="rosters">Rosters</a>
+        <a href="#/stats" data-route="stats">Stats</a>
+        <a href="#/leaders" data-route="leaders">Leaders</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="app" class="wrap">
+    <p class="muted">Loading…</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span id="footer-text"></span>
+      <a href="#/admin">League admin</a>
+    </div>
+  </footer>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

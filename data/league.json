@@ -1,0 +1,37 @@
+{
+  "name": "WJMSPL",
+  "fullName": "WJMSPL Baseball League",
+  "season": "2026",
+  "inningsPerGame": 9,
+  "leaderMinimums": {
+    "plateAppearancesPerTeamGame": 2.0,
+    "inningsPitchedPerTeamGame": 1.0
+  },
+  "github": {
+    "owner": "liebz-liebz",
+    "repo": "WJMSPL-Website",
+    "branch": "main"
+  },
+  "teams": [
+    {
+      "id": "THU",
+      "name": "Thunder",
+      "color": "#1d4ed8"
+    },
+    {
+      "id": "RIV",
+      "name": "Riverhawks",
+      "color": "#047857"
+    },
+    {
+      "id": "HOR",
+      "name": "Hornets",
+      "color": "#b45309"
+    },
+    {
+      "id": "PIO",
+      "name": "Pioneers",
+      "color": "#b91c1c"
+    }
+  ]
+}
