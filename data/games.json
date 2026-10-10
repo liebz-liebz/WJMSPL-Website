@@ -5,7 +5,13 @@
     "time": "18:45",
     "away": "THU",
     "home": "DIA",
-    "status": "scheduled"
+    "status": "final",
+    "awayScore": 7,
+    "homeScore": 5,
+    "batting": [
+      {"player": "m-peterson", "team": "THU", "ab": 0, "r": 7, "h": 0, "2b": 0, "3b": 0, "hr": 0, "bb": 0, "so": 0, "sf": 0},
+      {"player": "m-collins", "team": "DIA", "ab": 0, "r": 5, "h": 0, "2b": 0, "3b": 0, "hr": 0, "bb": 0, "so": 0, "sf": 0}
+    ]
   },
   {
     "id": "g001",
