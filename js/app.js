@@ -438,10 +438,9 @@ function calendarView(games, monthParam) {
 
 function renderStandings() {
   const rows = computeStandings();
-  const played = DB.games.filter(countsForStandings).length;
   $app.innerHTML = `
     <div class="page-head"><h1>Standings</h1>
-      <div class="controls">${seasonPicker()}<span class="muted">${played} game${played === 1 ? '' : 's'} played</span></div></div>
+      <div class="controls">${seasonPicker()}</div></div>
     <div class="card">${standingsTable(rows)}</div>
     <p class="muted small">GB = games behind · RS/RA = runs scored/allowed · L10 = last 10 games · STRK = current streak.
     Ties count as half a win in PCT.</p>`;
