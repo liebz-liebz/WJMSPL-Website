@@ -46,5 +46,8 @@
   {"id": "g-moore", "name": "Grant Moore", "number": 7, "team": "PIO"},
   {"id": "j-collins", "name": "Jonah Collins", "number": 48, "team": "PIO"},
   {"id": "d-anderson", "name": "Dylan Anderson", "number": 22, "team": "PIO"},
-  {"id": "a-baker", "name": "Adam Baker", "number": 50, "team": "PIO"}
+  {"id": "a-baker", "name": "Adam Baker", "number": 50, "team": "PIO"},
+  {"id": "j-smith", "name": "John Smith", "number": 45, "team": "MM"},
+  {"id": "j-baker", "name": "James Baker", "number": 13, "team": "MM"},
+  {"id": "m-collins", "name": "Max Collins", "number": 14, "team": "DIA"}
 ]
