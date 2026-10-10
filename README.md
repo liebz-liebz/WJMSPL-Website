@@ -1,6 +1,6 @@
 # WJMSPL League Website
 
-A simple, free-to-host website for the league with **Schedule, Standings, Rosters, Stats and League Leaders**.
+The website for the Winnipeg Jewish Men's Slo Pitch League: a simple, free-to-host site with **Schedule, Standings, Rosters, Stats and League Leaders**.
 
 There's no database or server. Everything comes from three data files, and the site works out
 standings, player stats and leaders automatically from the game results:
@@ -10,37 +10,50 @@ standings, player stats and leaders automatically from the game results:
 | `data/league.json` | League name, season, teams (name, short ID, color), settings |
 | `data/players.json` | Every player: name, number, team, position |
 | `data/games.json` | The schedule, final scores, and (optionally) each game's box score |
+| `data/admin.json` | Created by the admin setup: the GitHub connection, locked with the admin password |
 
 > The data that ships with the site is **made-up sample data** so you can see how everything looks.
 > Replace it with your real teams, players and schedule before the season (see below).
 
 ---
 
-## After each game (the easy way)
+## After each game
 
-1. Go to the website and click **League admin** at the bottom of any page.
+Anyone with the admin password can do this. No GitHub account needed.
+
+1. Go to the website and click **League admin** at the bottom of any page, then enter the admin password.
 2. Under **Games & Results**, pick the game from the dropdown.
 3. Set **Status** to *Final* and enter both teams' runs.
-4. Optional but recommended: fill in the box score. Every player on each roster has a row; fill in only the players who played.
+4. If the game was shortened by the mercy rule, tick **Mercy rule** and enter **Innings played** (e.g. 5).
+   The result then shows as e.g. "Final/5 · Mercy".
+5. Optional but recommended: fill in the box score. Every player on each roster has a row; fill in only the players who played.
    The page warns you if the numbers don't add up (e.g. batters' runs ≠ the final score).
-5. Click **Save to website**. The site updates within a few minutes.
+6. Click **Save to website**. The site updates within a few minutes.
 
 Standings only need the final score. The box score is what feeds player stats and league leaders.
 
-### One-time setup to enable "Save to website"
+### Game length
 
-The Save button writes to this GitHub repository, so it needs a GitHub access token on your device:
+Two games between the same teams on the same day are treated as a doubleheader and scheduled for 6 innings each.
+Every other game is 9 innings. The schedule labels doubleheader games automatically. To change a single game's length,
+edit **Scheduled innings** on the admin page. To change the league defaults, edit `scheduledInnings` in `data/league.json`.
 
-1. Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new):
-   - **Repository access:** *Only select repositories* → this repository
-   - **Permissions → Repository permissions → Contents:** *Read and write*
-2. On the website, open **League admin → Setup**, paste the token, and click **Save & test connection**.
+### One-time setup (site owner)
 
-The token stays in that browser only. Anyone can open the admin page, but only someone with a token can save changes.
-Each person who enters results can make their own token.
+The website is stored on GitHub, so saving needs a GitHub access token. The owner sets it up once, and it gets stored
+in `data/admin.json`, encrypted with the admin password. Everyone else only ever needs the password.
 
-**No token?** Use **Download games.json**, then on GitHub open the `data` folder → **Add file → Upload files** →
-drop the file in → **Commit changes**.
+1. Open the website's **League admin** page. Before setup, it shows the setup form.
+2. Follow the steps on that page to create a [fine-grained token](https://github.com/settings/personal-access-tokens/new)
+   with access to only this repository and **Contents: Read and write**. Pick the longest expiration allowed.
+3. Paste the token, choose the admin password, and click **Connect & save**.
+
+Later, under League admin → **Settings**, you can change the password or enter a new token when the old one expires.
+If the token expires, the admin page shows a message saying so.
+
+**About security:** the password is the only thing stopping someone from editing the league data, so pick one
+that's hard to guess (three or four random words works well) and change it if it leaks. Every save is recorded in
+the GitHub history, so any bad edit can be undone. The token can only change this one repository.
 
 ## Other common edits
 
@@ -52,10 +65,11 @@ drop the file in → **Commit changes**.
 
 ### Settings in `league.json`
 
-- `inningsPerGame`: used for ERA and K/9 (e.g. set to `7` for 7-inning games).
+- `scheduledInnings`: default game length for single games (`singleGame`) and doubleheaders (`doubleheader`).
+- `inningsPerGame`: the innings ERA and K/9 are scaled to (ERA = earned runs per this many innings).
 - `leaderMinimums`: how much a player must play to qualify for the rate-stat leaderboards (AVG, OBP, ERA, WHIP).
   `plateAppearancesPerTeamGame: 2` means 2 plate appearances for every game their team has a box score for.
-- `github`: the repository the admin page saves to.
+- `github`: the repository the admin page saves to (pre-fills the setup form).
 
 ## Starting the real season
 
@@ -75,7 +89,7 @@ GitHub Pages is free for public repositories. Private repositories need a paid G
 ## Previewing on your own computer
 
 From this folder, run `python3 -m http.server` and open http://localhost:8000. (Opening `index.html` directly
-won't work because browsers block loading the data files that way.)
+won't work because browsers block loading the data files that way.) Saving from a local copy still writes to GitHub.
 
 ## How the files fit together
 
@@ -84,6 +98,6 @@ index.html        page shell + navigation
 css/style.css     all styling (colors are at the top)
 js/data.js        loads data files; computes standings, stats, leaders
 js/app.js         public pages: home, schedule, standings, rosters, stats, leaders, box scores, player pages
-js/admin.js       League admin page
+js/admin.js       League admin page (password sign-in, results entry, rosters)
 data/*.json       the league's data
 ```

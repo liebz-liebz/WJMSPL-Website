@@ -43,7 +43,10 @@ const routes = {
   leaders: renderLeaders,
   game: renderGame,
   player: renderPlayer,
-  admin: (...a) => renderAdmin(...a),
+  admin: () => renderAdmin().catch(e => {
+    console.error(e);
+    $app.innerHTML = `<div class="notice"><strong>Something went wrong on the admin page.</strong><br>${esc(e.message)}</div>`;
+  }),
 };
 
 function router() {
@@ -138,6 +141,14 @@ const PIT_COLS = [
 
 // ---------- shared pieces ----------
 
+// Small print under a game: doubleheader / length, location, notes.
+function gameInfo(g) {
+  const dh = DB.doubleheaders.get(g.id);
+  const inn = scheduledInnings(g);
+  const len = dh ? `Doubleheader, Game ${dh.game} (${inn} inn.)` : (inn !== defaultInnings(g) ? `${inn} innings` : '');
+  return [len, g.location, g.notes].filter(Boolean).join(' · ');
+}
+
 function gameRow(g, { showDate = false } = {}) {
   const final = isFinal(g);
   const as = num(g.awayScore), hs = num(g.homeScore);
@@ -146,7 +157,7 @@ function gameRow(g, { showDate = false } = {}) {
   const status = g.status || 'scheduled';
   let meta;
   if (final) {
-    meta = `<span class="status final">Final</span>` +
+    meta = `<span class="status final">${finalLabel(g)}</span>${g.mercy ? ' <span class="badge mercy">Mercy</span>' : ''}` +
       (hasBoxScore(g) ? `<br><a href="#/game/${encodeURIComponent(g.id)}">Box score</a>` : '');
   } else if (status === 'postponed' || status === 'cancelled') {
     meta = `<span class="status ${status}">${status}</span>`;
@@ -158,7 +169,7 @@ function gameRow(g, { showDate = false } = {}) {
       ${showDate ? `<div class="muted small">${esc(fmtDate(g.date))}</div>` : ''}
       ${side(g.away, as, as > hs)}
       ${side(g.home, hs, hs > as)}
-      ${g.location || g.notes ? `<div class="muted small">${esc([g.location, g.notes].filter(Boolean).join(' · '))}</div>` : ''}
+      ${gameInfo(g) ? `<div class="muted small">${esc(gameInfo(g))}</div>` : ''}
     </div>
     <div class="game-meta">${meta}</div>
   </div>`;
@@ -436,13 +447,12 @@ function renderGame(id) {
     <p><a href="#/schedule">&larr; Schedule</a></p>
     <section class="card">
       <p class="muted small" style="text-align:center;margin-top:0">${esc(fmtDate(g.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}
-        ${g.time ? ' · ' + esc(fmtTime(g.time)) : ''}${g.location ? ' · ' + esc(g.location) : ''}</p>
+        ${g.time ? ' · ' + esc(fmtTime(g.time)) : ''}${gameInfo(g) ? ' · ' + esc(gameInfo(g)) : ''}</p>
       <div class="scoreboard">
         <div class="team"><div class="team-name">${teamLabel(g.away)}</div><div class="muted small">Away</div>${final ? `<div class="big">${as}</div>` : ''}</div>
-        <div class="vs">${final ? 'FINAL' : esc((g.status || 'scheduled').toUpperCase())}</div>
+        <div class="vs">${final ? esc(finalLabel(g).toUpperCase()) + (g.mercy ? '<br><span class="badge mercy">Mercy</span>' : '') : esc((g.status || 'scheduled').toUpperCase())}</div>
         <div class="team"><div class="team-name">${teamLabel(g.home)}</div><div class="muted small">Home</div>${final ? `<div class="big">${hs}</div>` : ''}</div>
       </div>
-      ${g.notes ? `<p class="muted" style="text-align:center">${esc(g.notes)}</p>` : ''}
     </section>
     ${hasBoxScore(g) ? `
       <div class="grid grid-2">
@@ -471,7 +481,8 @@ function renderPlayer(id) {
     const us = e.game.home === e.team ? num(e.game.homeScore) : num(e.game.awayScore);
     const them = e.game.home === e.team ? num(e.game.awayScore) : num(e.game.homeScore);
     const r = us > them ? 'W' : us < them ? 'L' : 'T';
-    return `<a href="#/game/${encodeURIComponent(e.game.id)}" class="${r === 'W' ? 'result-w' : r === 'L' ? 'result-l' : ''}">${r} ${us}-${them}</a>`;
+    const extra = e.game.mercy ? ' (mercy)' : finalLabel(e.game) !== 'Final' ? ` (${finalLabel(e.game).slice(6)})` : '';
+    return `<a href="#/game/${encodeURIComponent(e.game.id)}" class="${r === 'W' ? 'result-w' : r === 'L' ? 'result-l' : ''}">${r} ${us}-${them}</a>${extra}`;
   };
   const batLog = log.filter(e => e.bat);
   const pitLog = log.filter(e => e.pit);
@@ -515,8 +526,9 @@ document.querySelector('.nav-toggle').addEventListener('click', e => {
       <br><span class="small">If you just edited a data file, check it for a typo (a missing comma or quote is the usual culprit).</span></div>`;
     return;
   }
-  document.title = `${DB.league.name} Baseball`;
+  document.title = DB.league.fullName ? `${DB.league.name} · ${DB.league.fullName}` : DB.league.name;
   document.getElementById('brand-name').textContent = DB.league.name;
+  document.getElementById('brand-full').textContent = DB.league.fullName || '';
   document.getElementById('footer-text').textContent = `${DB.league.fullName || DB.league.name} · ${DB.league.season} Season`;
   window.addEventListener('hashchange', router);
   router();

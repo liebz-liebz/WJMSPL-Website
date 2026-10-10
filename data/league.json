@@ -1,7 +1,11 @@
 {
   "name": "WJMSPL",
-  "fullName": "WJMSPL Baseball League",
+  "fullName": "Winnipeg Jewish Men's Slo Pitch League",
   "season": "2026",
+  "scheduledInnings": {
+    "singleGame": 9,
+    "doubleheader": 6
+  },
   "inningsPerGame": 9,
   "leaderMinimums": {
     "plateAppearancesPerTeamGame": 2.0,

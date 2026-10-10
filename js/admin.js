@@ -1,11 +1,18 @@
-// League admin: enter game results / box scores, edit the schedule and rosters,
-// then save the data files straight to GitHub (or download them to upload by hand).
+// League admin: enter game results / box scores, edit the schedule and rosters, and save
+// the data files to the website.
+//
+// How saving works without everyone needing a GitHub account: the site owner sets up a GitHub
+// access token once. It is stored in data/admin.json, encrypted with the admin password.
+// Anyone who knows the password can unlock it in their browser and save changes.
 
-const STORE_KEY = 'wjmspl-admin';
+const SESSION_KEY = 'wjmspl-admin-session';
+const PBKDF2_ITERATIONS = 600000;
 const PIT_INPUT_KEYS = ['ip', 'h', 'r', 'er', 'bb', 'so', 'hr'];
 
 const admin = {
+  creds: null, // { token, owner, repo, branch } once unlocked
   ready: false,
+  loadError: null,
   tab: 'games',
   games: [],
   players: [],
@@ -20,38 +27,67 @@ const admin = {
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-function loadSettings() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
+// ---------- sign-in session ----------
+
+function restoreSession() {
+  for (const store of ['sessionStorage', 'localStorage']) {
+    try {
+      const c = JSON.parse(window[store].getItem(SESSION_KEY));
+      if (c && c.token) return c;
+    } catch { /* storage blocked */ }
+  }
+  return null;
 }
-function saveSettings(s) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); return true; } catch { return false; }
+function storeSession(creds, remember) {
+  try { window[remember ? 'localStorage' : 'sessionStorage'].setItem(SESSION_KEY, JSON.stringify(creds)); } catch { /* storage blocked */ }
 }
-function repoConfig() {
-  const s = loadSettings();
-  const gh = DB.league.github || {};
-  return {
-    token: s.token || '',
-    owner: s.owner || gh.owner || '',
-    repo: s.repo || gh.repo || '',
-    branch: s.branch || gh.branch || 'main',
-  };
+function clearSession() {
+  for (const store of ['sessionStorage', 'localStorage']) {
+    try { window[store].removeItem(SESSION_KEY); } catch { /* storage blocked */ }
+  }
+}
+function signOut() {
+  if (hasUnsaved() && !confirm('You have unsaved changes. Sign out anyway?')) return;
+  clearSession();
+  admin.creds = null;
+  admin.ready = false;
+  admin.dirtyGames.clear();
+  admin.deletedGames.clear();
+  admin.playersDirty = false;
+  admin.message = null;
+  admin.tab = 'games';
+  renderAdmin();
 }
 
-function initAdmin() {
-  if (admin.ready) return;
-  admin.games = clone(DB.games);
-  admin.players = clone(DB.players);
-  admin.loadedPlayersJSON = JSON.stringify(DB.players);
+function initAdminData(games, players) {
+  admin.games = clone(games);
+  admin.players = clone(players);
+  admin.loadedPlayersJSON = JSON.stringify(players);
   const today = todayISO();
   const sorted = sortedAdminGames();
   // Default to the most recent game that still needs a result, else the latest game played.
   const pending = sorted.filter(g => g.status !== 'final' && g.status !== 'cancelled' && (g.date || '') <= today);
   admin.currentGameId = (pending[pending.length - 1] || sorted.filter(isFinal).pop() || sorted[0] || {}).id || null;
   admin.ready = true;
-  window.addEventListener('beforeunload', e => {
-    if (hasUnsaved()) { e.preventDefault(); e.returnValue = ''; }
-  });
 }
+
+// Load the latest data straight from GitHub so admins never edit a stale copy of the site.
+async function loadAdminData() {
+  admin.loadError = null;
+  try {
+    const [games, players] = await Promise.all(['data/games.json', 'data/players.json']
+      .map(async p => JSON.parse((await ghReadFile(admin.creds, p)).text)));
+    setData(DB.league, players, games);
+    initAdminData(games, players);
+  } catch (e) {
+    admin.loadError = e.message;
+    initAdminData(DB.games, DB.players);
+  }
+}
+
+window.addEventListener('beforeunload', e => {
+  if (hasUnsaved()) { e.preventDefault(); e.returnValue = ''; }
+});
 
 function hasUnsaved() {
   return admin.dirtyGames.size > 0 || admin.deletedGames.size > 0 || admin.playersDirty;
@@ -64,24 +100,134 @@ function currentGame() { return admin.games.find(g => g.id === admin.currentGame
 
 // ---------- page ----------
 
-function renderAdmin() {
-  initAdmin();
-  const cfg = repoConfig();
-  const tabs = [['games', 'Games & Results'], ['rosters', 'Rosters'], ['settings', 'Setup']];
+async function renderAdmin() {
+  if (!admin.creds) admin.creds = restoreSession();
+  if (!admin.creds) return renderSignIn();
+  if (!admin.ready) {
+    $app.innerHTML = '<p class="muted">Loading the latest league data…</p>';
+    await loadAdminData();
+    if (parseHash().route !== 'admin') return;
+  }
+  const tabs = [['games', 'Games & Results'], ['rosters', 'Rosters'], ['settings', 'Settings']];
   $app.innerHTML = `
     <div class="admin">
       <div class="page-head"><h1>League Admin</h1>
-        <div class="seg admin-tabs" id="admin-tabs">${tabs.map(([k, l]) =>
-          `<button data-tab="${k}" class="${admin.tab === k ? 'active' : ''}">${l}</button>`).join('')}</div>
+        <div class="controls">
+          <div class="seg" id="admin-tabs">${tabs.map(([k, l]) =>
+            `<button data-tab="${k}" class="${admin.tab === k ? 'active' : ''}">${l}</button>`).join('')}</div>
+          <button class="btn secondary" id="sign-out">Sign out</button>
+        </div>
       </div>
-      ${!cfg.token && admin.tab !== 'settings' ? `<div class="notice info">To save changes directly to the website, add a GitHub access token under
-        <a href="#" data-goto="settings">Setup</a>. Without one you can still download the updated file and upload it to GitHub yourself.</div>` : ''}
+      ${admin.loadError ? `<div class="notice"><strong>Couldn't connect to GitHub, so saving won't work right now.</strong><br>
+        ${esc(admin.loadError)}<br><span class="small">If the GitHub token has expired, the site owner can enter a new one under
+        <a href="#" data-goto="settings">Settings</a>.</span></div>` : ''}
       <div id="admin-msg">${admin.message ? `<div class="notice ${admin.message.kind}">${admin.message.html}</div>` : ''}</div>
       <div id="admin-body"></div>
     </div>`;
   document.querySelectorAll('#admin-tabs button').forEach(b => (b.onclick = () => switchTab(b.dataset.tab)));
   document.querySelectorAll('[data-goto]').forEach(a => (a.onclick = e => { e.preventDefault(); switchTab(a.dataset.goto); }));
+  document.getElementById('sign-out').onclick = signOut;
   ({ games: renderGamesTab, rosters: renderRostersTab, settings: renderSettingsTab })[admin.tab]();
+}
+
+async function renderSignIn() {
+  $app.innerHTML = '<p class="muted">Loading…</p>';
+  let lock = null;
+  try {
+    lock = await fetchJSON('data/admin.json');
+  } catch (e) {
+    if (!/\(404\)/.test(e.message)) {
+      $app.innerHTML = `<div class="notice"><strong>Couldn't load the admin settings.</strong><br>${esc(e.message)}</div>`;
+      return;
+    }
+  }
+  if (parseHash().route !== 'admin') return;
+  if (!lock || !lock.data) return renderFirstSetup();
+
+  $app.innerHTML = `
+    <section class="card narrow">
+      <h1>League Admin</h1>
+      <p class="muted">Enter the admin password to update scores, stats, the schedule and rosters.</p>
+      <form id="signin" class="form-stack">
+        <label class="field">Password<input type="password" id="pw" autocomplete="current-password" required autofocus></label>
+        <label class="check"><input type="checkbox" id="remember" checked> Keep me signed in on this device</label>
+        <div id="signin-msg"></div>
+        <button class="btn" type="submit">Sign in</button>
+      </form>
+      <p class="muted small">Don't have the password? Ask the league organizer.</p>
+    </section>`;
+  document.getElementById('signin').onsubmit = async e => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button');
+    btn.disabled = true;
+    btn.textContent = 'Checking…';
+    try {
+      const creds = await decryptCreds(lock, document.getElementById('pw').value);
+      admin.creds = creds;
+      storeSession(creds, document.getElementById('remember').checked);
+      renderAdmin();
+    } catch {
+      document.getElementById('signin-msg').innerHTML = '<p class="warn">Wrong password. Try again.</p>';
+      btn.disabled = false;
+      btn.textContent = 'Sign in';
+    }
+  };
+}
+
+// Shown only until the site owner has set an admin password.
+function renderFirstSetup() {
+  const gh = DB.league.github || {};
+  $app.innerHTML = `
+    <section class="card narrow">
+      <h1>Set up League Admin</h1>
+      <p>This is a one-time setup for the site owner. It connects the admin page to GitHub (where the website is stored)
+        and sets the password everyone else will use. After this, entering results needs only the password, not a GitHub account.</p>
+      <h2>1. Create a GitHub token</h2>
+      <ol>
+        <li>Signed in to GitHub, open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">New fine-grained token</a>.</li>
+        <li>Name it “League website” and choose the longest expiration allowed.</li>
+        <li><strong>Repository access:</strong> <em>Only select repositories</em> → <code>${esc(gh.owner)}/${esc(gh.repo)}</code>.</li>
+        <li><strong>Permissions → Repository permissions → Contents:</strong> <em>Read and write</em>.</li>
+        <li>Click <strong>Generate token</strong> and copy it.</li>
+      </ol>
+      <h2>2. Connect and choose the admin password</h2>
+      <form id="setup" class="form-stack">
+        <label class="field">GitHub token<input type="password" id="su-token" placeholder="github_pat_…" autocomplete="off" required></label>
+        <div class="form-grid">
+          <label>Repository owner<input type="text" id="su-owner" value="${esc(gh.owner || '')}" required></label>
+          <label>Repository name<input type="text" id="su-repo" value="${esc(gh.repo || '')}" required></label>
+          <label>Branch<input type="text" id="su-branch" value="${esc(gh.branch || 'main')}" required></label>
+        </div>
+        <div class="form-grid">
+          <label>Admin password<input type="password" id="su-pw" autocomplete="new-password" required minlength="8"></label>
+          <label>Confirm password<input type="password" id="su-pw2" autocomplete="new-password" required></label>
+        </div>
+        <div id="setup-msg"></div>
+        <button class="btn" type="submit">Connect &amp; save</button>
+      </form>
+      <p class="muted small">Pick a password that's hard to guess (e.g. three or four random words). It's the only thing protecting the
+        site's data from edits. If it ever leaks, change it under Settings. Every save is recorded on GitHub, so anything can be undone.</p>
+    </section>`;
+  document.getElementById('setup').onsubmit = async e => {
+    e.preventDefault();
+    const v = id => document.getElementById(id).value.trim();
+    const msg = document.getElementById('setup-msg');
+    if (v('su-pw') !== v('su-pw2')) { msg.innerHTML = '<p class="warn">The passwords don\'t match.</p>'; return; }
+    const creds = { token: v('su-token'), owner: v('su-owner'), repo: v('su-repo'), branch: v('su-branch') };
+    const btn = e.target.querySelector('button');
+    btn.disabled = true;
+    msg.innerHTML = '<p class="muted">Connecting…</p>';
+    try {
+      await saveLockFile(creds, v('su-pw'), 'Set up league admin password');
+      admin.creds = creds;
+      storeSession(creds, true);
+      admin.message = { kind: 'ok', html: '<strong>All set!</strong> Share the website link and the admin password with whoever enters results. They sign in using <em>League admin</em> at the bottom of any page.' };
+      renderAdmin();
+    } catch (err) {
+      msg.innerHTML = `<p class="warn">${esc(err.message)}</p>`;
+      btn.disabled = false;
+    }
+  };
 }
 
 function switchTab(tab) {
@@ -122,7 +268,7 @@ function refreshDirtyLabel(kind) {
 // ---------- games tab ----------
 
 function gameLabel(g) {
-  const score = isFinal(g) ? ` ${num(g.awayScore)}-${num(g.homeScore)}` : '';
+  const score = isFinal(g) ? ` ${num(g.awayScore)}-${num(g.homeScore)}${g.mercy ? ', mercy' : ''}` : '';
   const st = g.status && g.status !== 'scheduled' ? ` (${g.status}${score})` : '';
   return `${g.date || 'TBD'} · ${teamName(g.away)} @ ${teamName(g.home)}${st}${admin.dirtyGames.has(g.id) ? ' *' : ''}`;
 }
@@ -167,10 +313,14 @@ function renderGamesTab() {
   if (!g) return;
 
   const form = document.getElementById('game-form');
-  form.addEventListener('input', () => { collectGameForm(); updateChecks(); });
+  form.addEventListener('input', e => {
+    if (e.target.id === 'g-innings') e.target.dataset.explicit = '1';
+    collectGameForm();
+    updateChecks();
+  });
   form.addEventListener('change', e => {
     collectGameForm();
-    if (e.target.id === 'g-away' || e.target.id === 'g-home') renderGamesTab();
+    if (e.target.id === 'g-away' || e.target.id === 'g-home' || e.target.id === 'g-date') renderGamesTab();
     else updateChecks();
   });
   document.getElementById('game-delete').onclick = () => {
@@ -189,6 +339,16 @@ function renderGamesTab() {
     updateChecks();
   };
   updateChecks();
+}
+
+// Same rules as the public site, but using the admin's working copy (edits can create a doubleheader).
+function defaultInningsAdmin(g) {
+  const cfg = DB.league.scheduledInnings || {};
+  const others = admin.games.filter(x => x.id !== g.id);
+  return findDoubleheaders([...others, g]).has(g.id) ? (cfg.doubleheader ?? 6) : (cfg.singleGame ?? 9);
+}
+function scheduledInningsAdmin(g) {
+  return num(g.innings) || defaultInningsAdmin(g);
 }
 
 function rosterFor(team, existingLines) {
@@ -272,9 +432,16 @@ function gameForm(g) {
         </select></label>
         <label>${esc(teamName(g.away))} runs<input type="number" min="0" id="g-ascore" value="${g.awayScore ?? ''}"></label>
         <label>${esc(teamName(g.home))} runs<input type="number" min="0" id="g-hscore" value="${g.homeScore ?? ''}"></label>
+        <label>Scheduled innings<input type="number" min="1" id="g-innings" value="${scheduledInningsAdmin(g)}" ${g.innings ? 'data-explicit="1"' : ''}></label>
+        <label>Innings played<input type="number" min="1" id="g-played" value="${g.inningsPlayed ?? ''}" placeholder="${scheduledInningsAdmin(g)}"></label>
+        <label class="check" style="align-self:end;padding-bottom:.45rem"><input type="checkbox" id="g-mercy" ${g.mercy ? 'checked' : ''}> Mercy rule</label>
         <label style="grid-column:1/-1">Notes (shown on schedule)<input type="text" id="g-notes" value="${esc(g.notes || '')}" placeholder="e.g. Shortened to 5 innings (rain)"></label>
       </div>
-      <p class="muted small">Standings update from the final score alone. The box score below is optional, but it's what feeds player stats and leaders.</p>
+      <p class="muted small">Doubleheader games (same two teams twice in one day) are scheduled for
+        ${esc(String((DB.league.scheduledInnings || {}).doubleheader ?? 6))} innings, other games
+        ${esc(String((DB.league.scheduledInnings || {}).singleGame ?? 9))}. Fill in <em>Innings played</em> only if the game
+        was shortened (mercy, rain) or went to extra innings.
+        Standings update from the final score alone. The box score below is optional, but it's what feeds player stats and leaders.</p>
     </section>
     <section class="card">
       <div class="card-head"><h2>Box score</h2><button type="button" class="btn secondary" id="box-clear">Clear box score</button></div>
@@ -336,13 +503,19 @@ function collectGameForm() {
   // Keep the away team's pitchers before the home team's.
   pitching = pitching.filter(l => l.team === val('g-away')).concat(pitching.filter(l => l.team !== val('g-away')));
 
-  const known = ['id', 'date', 'time', 'location', 'away', 'home', 'type', 'status', 'awayScore', 'homeScore', 'notes', 'batting', 'pitching'];
+  const known = ['id', 'date', 'time', 'location', 'away', 'home', 'type', 'innings', 'status', 'awayScore', 'homeScore',
+    'inningsPlayed', 'mercy', 'notes', 'batting', 'pitching'];
   const extra = Object.fromEntries(Object.entries(g).filter(([k]) => !known.includes(k)));
   const next = { id: g.id, date: val('g-date'), time: val('g-time'), location: val('g-location'), away: val('g-away'), home: val('g-home') };
   if (val('g-type') !== 'regular') next.type = val('g-type');
+  // Only store a length when it differs from the league default for this kind of game.
+  const inn = document.getElementById('g-innings');
+  if (inn.dataset.explicit && num(inn.value) && num(inn.value) !== defaultInningsAdmin({ ...g, ...next })) next.innings = num(inn.value);
   next.status = val('g-status');
   if (val('g-ascore') !== '') next.awayScore = num(val('g-ascore'));
   if (val('g-hscore') !== '') next.homeScore = num(val('g-hscore'));
+  if (num(val('g-played'))) next.inningsPlayed = num(val('g-played'));
+  if (document.getElementById('g-mercy').checked) next.mercy = true;
   if (val('g-notes')) next.notes = val('g-notes');
   if (batting.length) next.batting = batting;
   if (pitching.length) next.pitching = pitching;
@@ -368,6 +541,8 @@ function gameProblems(g) {
   } else if (g.batting || g.pitching) {
     problems.push('Box score entered but status is not Final — stats only count once the game is marked Final.');
   }
+  if (g.mercy && g.status !== 'final') problems.push('Mercy rule is checked but the game is not marked Final.');
+  if (g.mercy && g.inningsPlayed && g.inningsPlayed > scheduledInningsAdmin(g)) problems.push('A mercy-rule game can\'t go longer than its scheduled innings.');
   if (!g.batting && !g.pitching) return problems;
   for (const [team, opp, score, oppScore] of [[g.away, g.home, g.awayScore, g.homeScore], [g.home, g.away, g.homeScore, g.awayScore]]) {
     const bat = (g.batting || []).filter(l => l.team === team);
@@ -426,8 +601,7 @@ async function saveGamesToGitHub() {
   const blocking = [...admin.dirtyGames].map(id => admin.games.find(g => g.id === id)).filter(Boolean)
     .filter(g => g.status === 'final' && (g.awayScore === undefined || g.homeScore === undefined));
   if (blocking.length) return showMessage(`Can't save: ${esc(gameLabel(blocking[0]))} is marked Final but has no score.`);
-  const cfg = repoConfig();
-  if (!cfg.token) return showMessage('Add a GitHub access token in <a href="#" onclick="switchTab(\'settings\');return false">Setup</a> first, or use “Download games.json”.');
+  const cfg = admin.creds;
 
   const changed = [...admin.dirtyGames].map(id => admin.games.find(g => g.id === id)).filter(Boolean);
   const summary = changed.length === 1 ? gameLabel(changed[0]).replace(/ \*$/, '') : `${changed.length + admin.deletedGames.size} games`;
@@ -537,8 +711,7 @@ function cleanPlayers() {
 async function savePlayersToGitHub() {
   const missing = admin.players.find(p => !p.name);
   if (missing) return showMessage('Every player needs a name before saving.');
-  const cfg = repoConfig();
-  if (!cfg.token) return showMessage('Add a GitHub access token in <a href="#" onclick="switchTab(\'settings\');return false">Setup</a> first, or use “Download players.json”.');
+  const cfg = admin.creds;
   setBusy(true);
   try {
     const saved = await ghUpdateFile(cfg, 'data/players.json', remote => {
@@ -562,73 +735,73 @@ async function savePlayersToGitHub() {
   }
 }
 
-// ---------- setup tab ----------
+// ---------- settings tab ----------
 
 function renderSettingsTab() {
-  const cfg = repoConfig();
+  const c = admin.creds;
   document.getElementById('admin-body').innerHTML = `
     <section class="card">
-      <h2>Save directly to the website</h2>
-      <p>The site's data lives in your GitHub repository. With a GitHub access token saved on this device, the
-        <strong>Save to website</strong> button publishes your changes immediately — no file uploads needed.</p>
-      <details><summary>How to create a token (one time, about 2 minutes)</summary>
-        <ol>
-          <li>On GitHub, go to <strong>Settings → Developer settings → Personal access tokens → Fine-grained tokens</strong>
-            (<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">direct link</a>).</li>
-          <li>Name it something like “League website”, and pick an expiration (e.g. end of season).</li>
-          <li>Under <strong>Repository access</strong>, choose <em>Only select repositories</em> and pick
-            <code>${esc(cfg.owner)}/${esc(cfg.repo)}</code>.</li>
-          <li>Under <strong>Permissions → Repository permissions</strong>, set <strong>Contents</strong> to <em>Read and write</em>.</li>
-          <li>Click <strong>Generate token</strong>, copy it, and paste it below.</li>
-        </ol>
-        <p class="muted small">The token is stored only in this browser on this device. Anyone who gets it can edit the repository,
-          so only save it on your own device. You can revoke it on GitHub at any time.</p>
-      </details>
-      <div class="form-grid" style="margin-top:1rem">
-        <label style="grid-column:1/-1">GitHub token<input type="password" id="s-token" value="${esc(cfg.token)}" placeholder="github_pat_…" autocomplete="off"></label>
-        <label>Repository owner<input type="text" id="s-owner" value="${esc(cfg.owner)}"></label>
-        <label>Repository name<input type="text" id="s-repo" value="${esc(cfg.repo)}"></label>
-        <label>Branch<input type="text" id="s-branch" value="${esc(cfg.branch)}"></label>
-      </div>
-      <div class="controls" style="margin-top:1rem">
-        <button class="btn" id="s-save">Save &amp; test connection</button>
-        <button class="btn secondary" id="s-forget">Forget token</button>
-      </div>
+      <h2>Who can update the site</h2>
+      <p>Anyone with the admin password. Send them the website link and the password; they click
+        <strong>League admin</strong> at the bottom of any page and sign in. No GitHub account needed.</p>
     </section>
     <section class="card">
-      <h2>Without a token</h2>
-      <p>Use <strong>Download games.json</strong> (or players.json), then on GitHub open the <code>data</code> folder,
-        choose <strong>Add file → Upload files</strong>, drop the downloaded file in, and click <strong>Commit changes</strong>.</p>
+      <h2>Change the admin password</h2>
+      <p class="muted small">Everyone currently signed in stays signed in. New sign-ins need the new password
+        (it takes a few minutes for the change to reach the live site).</p>
+      <form id="pw-form" class="form-stack">
+        <div class="form-grid">
+          <label>New password<input type="password" id="np" autocomplete="new-password" required minlength="8"></label>
+          <label>Confirm new password<input type="password" id="np2" autocomplete="new-password" required></label>
+        </div>
+        <div><button class="btn" type="submit">Change password</button></div>
+      </form>
+    </section>
+    <section class="card">
+      <h2>GitHub connection <span class="muted small">(site owner)</span></h2>
+      <p>Saving to <code>${esc(c.owner)}/${esc(c.repo)}</code> on branch <code>${esc(c.branch)}</code>.
+        GitHub tokens expire; when this one does, saving stops working until the owner creates a new token
+        (same steps as the first setup: <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">new fine-grained token</a>,
+        this repository only, <em>Contents: Read and write</em>) and enters it here.</p>
+      <form id="tok-form" class="form-stack">
+        <div class="form-grid">
+          <label style="grid-column:1/-1">New GitHub token<input type="password" id="nt" placeholder="github_pat_…" autocomplete="off" required></label>
+          <label>Admin password (current or new)<input type="password" id="tp" autocomplete="new-password" required minlength="8"></label>
+          <label>Confirm password<input type="password" id="tp2" autocomplete="new-password" required></label>
+        </div>
+        <div><button class="btn" type="submit">Update token</button></div>
+      </form>
     </section>`;
 
-  document.getElementById('s-save').onclick = async () => {
-    const s = {
-      token: document.getElementById('s-token').value.trim(),
-      owner: document.getElementById('s-owner').value.trim(),
-      repo: document.getElementById('s-repo').value.trim(),
-      branch: document.getElementById('s-branch').value.trim() || 'main',
-    };
-    if (!saveSettings(s)) return showMessage('This browser blocked saving settings (private browsing?). The token will not be remembered.');
-    if (!s.token) return showMessage('Settings saved, but no token entered.', 'info');
+  const run = async (form, creds, pw, pw2, commitMsg, okMsg) => {
+    if (pw !== pw2) return showMessage("The passwords don't match.");
     setBusy(true);
     try {
-      const res = await ghFetch(s, `/repos/${s.owner}/${s.repo}`);
-      const repo = await res.json();
-      if (!repo.permissions?.push) throw new Error('This token can read the repository but cannot write to it. Set Contents to “Read and write”.');
-      await ghFetch(s, `/repos/${s.owner}/${s.repo}/contents/data/games.json?ref=${encodeURIComponent(s.branch)}`);
-      showMessage(`<strong>Connected.</strong> Saves will go to <code>${esc(s.owner)}/${esc(s.repo)}</code> on branch <code>${esc(s.branch)}</code>.`, 'ok');
+      await saveLockFile(creds, pw, commitMsg);
+      admin.creds = creds;
+      // Keep this device signed in with the (possibly new) token.
+      let remembered = false;
+      try { remembered = !!localStorage.getItem(SESSION_KEY); } catch { /* storage blocked */ }
+      storeSession(creds, remembered);
+      form.reset();
+      showMessage(okMsg, 'ok');
+      if (admin.loadError) { admin.ready = false; admin.message = { kind: 'ok', html: okMsg }; renderAdmin(); }
     } catch (e) {
-      showMessage(`<strong>Connection failed:</strong> ${esc(e.message)}`);
+      showMessage(`<strong>Couldn't save:</strong> ${esc(e.message)}`);
     } finally {
       setBusy(false);
     }
   };
-  document.getElementById('s-forget').onclick = () => {
-    const s = loadSettings();
-    delete s.token;
-    saveSettings(s);
-    renderAdmin();
-    showMessage('Token removed from this device.', 'info');
+  document.getElementById('pw-form').onsubmit = e => {
+    e.preventDefault();
+    run(e.target, admin.creds, document.getElementById('np').value, document.getElementById('np2').value,
+      'Change league admin password', '<strong>Password changed.</strong> Remember to tell the other admins.');
+  };
+  document.getElementById('tok-form').onsubmit = e => {
+    e.preventDefault();
+    run(e.target, { ...admin.creds, token: document.getElementById('nt').value.trim() },
+      document.getElementById('tp').value, document.getElementById('tp2').value,
+      'Update league admin GitHub token', '<strong>GitHub token updated.</strong> Saving works again.');
   };
 }
 
@@ -647,7 +820,11 @@ async function ghFetch(cfg, path, opts = {}) {
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json()).message; } catch { /* ignore */ }
-    const hints = { 401: 'The token is invalid or expired.', 403: 'The token does not have permission for this repository.', 404: 'Repository, branch or file not found (or the token cannot see it).' };
+    const hints = {
+      401: "The website's GitHub token has expired or been revoked. The site owner needs to enter a new one under Settings.",
+      403: "The website's GitHub token doesn't have permission to change this repository.",
+      404: 'Repository, branch or file not found (or the GitHub token cannot see it).',
+    };
     const err = new Error(`${hints[res.status] || 'GitHub error.'} (${res.status}${detail ? ': ' + detail : ''})`);
     err.status = res.status;
     throw err;
@@ -666,23 +843,77 @@ function b64decode(b64) {
   return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
 }
 
+async function ghReadFile(cfg, path) {
+  const res = await ghFetch(cfg, `/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${encodeURIComponent(cfg.branch)}`);
+  const file = await res.json();
+  return { sha: file.sha, text: b64decode(file.content) };
+}
+
 // Reads a file from GitHub, transforms it, and commits the result. Retries once if someone else saved in between.
+// A missing file is passed to transform as null and created.
 async function ghUpdateFile(cfg, path, transform, message) {
   const base = `/repos/${cfg.owner}/${cfg.repo}/contents/${path}`;
   for (let attempt = 0; ; attempt++) {
-    const res = await ghFetch(cfg, `${base}?ref=${encodeURIComponent(cfg.branch)}`);
-    const file = await res.json();
-    const next = transform(b64decode(file.content));
+    let file = null;
+    try {
+      file = await ghReadFile(cfg, path);
+    } catch (e) {
+      if (e.status !== 404) throw e;
+    }
+    const next = transform(file ? file.text : null);
     try {
       await ghFetch(cfg, base, {
         method: 'PUT',
-        body: JSON.stringify({ message, content: b64encode(next), sha: file.sha, branch: cfg.branch }),
+        body: JSON.stringify({ message, content: b64encode(next), branch: cfg.branch, ...(file ? { sha: file.sha } : {}) }),
       });
       return next;
     } catch (e) {
       if ((e.status === 409 || e.status === 422) && attempt === 0) continue;
       throw e;
     }
+  }
+}
+
+// ---------- admin password lock ----------
+// data/admin.json holds the GitHub connection encrypted with the admin password (AES-GCM, key from PBKDF2).
+
+function bytesToB64(bytes) {
+  let bin = '';
+  bytes.forEach(b => (bin += String.fromCharCode(b)));
+  return btoa(bin);
+}
+function b64ToBytes(b64) {
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+async function passwordKey(password, salt, iterations) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, base,
+    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function encryptCreds(creds, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await passwordKey(password, salt, PBKDF2_ITERATIONS);
+  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(creds)));
+  return { version: 1, iterations: PBKDF2_ITERATIONS, salt: bytesToB64(salt), iv: bytesToB64(iv), data: bytesToB64(new Uint8Array(data)) };
+}
+// Throws if the password is wrong.
+async function decryptCreds(lock, password) {
+  const key = await passwordKey(password, b64ToBytes(lock.salt), lock.iterations);
+  const data = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64ToBytes(lock.iv) }, key, b64ToBytes(lock.data));
+  return JSON.parse(new TextDecoder().decode(data));
+}
+
+// Encrypts the GitHub connection with the password and commits it. Doubles as a check that the token can write.
+async function saveLockFile(creds, password, message) {
+  if (!password || password.length < 8) throw new Error('The password must be at least 8 characters.');
+  if (!creds.token) throw new Error('Enter a GitHub token.');
+  const lock = await encryptCreds(creds, password);
+  try {
+    await ghUpdateFile(creds, 'data/admin.json', () => JSON.stringify(lock, null, 2) + '\n', message);
+  } catch (e) {
+    if (e.status === 403) throw new Error(`The token can't write to ${creds.owner}/${creds.repo}. Make sure it has access to that repository with Contents set to “Read and write”.`);
+    throw e;
   }
 }
 

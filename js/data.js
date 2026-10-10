@@ -37,6 +37,40 @@ function setData(league, players, games) {
   DB.games = games;
   DB.teamsById = Object.fromEntries(league.teams.map(t => [t.id, t]));
   DB.playersById = Object.fromEntries(players.map(p => [p.id, p]));
+  DB.doubleheaders = findDoubleheaders(games);
+}
+
+// Two games between the same teams on the same day form a doubleheader.
+// Returns a Map of game id -> { game: 1 or 2, of: number of games that day }.
+function findDoubleheaders(games) {
+  const groups = new Map();
+  for (const g of games) {
+    if (!g.date || g.status === 'cancelled') continue;
+    const key = `${g.date}|${[g.away, g.home].sort().join('|')}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(g);
+  }
+  const out = new Map();
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    list.forEach((g, i) => out.set(g.id, { game: i + 1, of: list.length }));
+  }
+  return out;
+}
+
+// Scheduled length: a game's own "innings" if set, else the league default for single games / doubleheaders.
+function defaultInnings(g) {
+  const cfg = DB.league.scheduledInnings || {};
+  return DB.doubleheaders.has(g.id) ? (cfg.doubleheader ?? 6) : (cfg.singleGame ?? 9);
+}
+function scheduledInnings(g) {
+  return num(g.innings) || defaultInnings(g);
+}
+// "Final", or "Final/5" when the game ended early (mercy) or went to extra innings.
+function finalLabel(g) {
+  const played = num(g.inningsPlayed);
+  return played && played !== scheduledInnings(g) ? `Final/${played}` : 'Final';
 }
 
 // ---------- helpers ----------
