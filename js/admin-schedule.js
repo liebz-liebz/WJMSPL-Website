@@ -1,7 +1,7 @@
 // League admin → Schedule tab: add games one at a time or paste a whole season, and edit or delete games.
 
 admin.scheduleTeam = '';
-admin.addDraft = { date: '', time: '', location: '', away: '', home: '', type: 'regular' };
+admin.addDraft = { date: '', time: '', away: '', home: '', type: 'regular' };
 admin.bulkText = '';
 
 function newGameId(taken) {
@@ -83,7 +83,7 @@ function matchTeam(s) {
   return { error: partial.length ? `“${s.trim()}” matches more than one team` : `unknown team “${s.trim()}”` };
 }
 
-// One game per line: date, time, away team, home team, location (optional).
+// One game per line: date, time, away team, home team. Any extra columns are ignored.
 // Columns can be separated by commas or tabs (pasting from a spreadsheet gives tabs).
 function parseSchedule(text) {
   const rows = [];
@@ -98,7 +98,7 @@ function parseSchedule(text) {
     }
     const row = { line: i + 1, raw: line };
     rows.push(row);
-    const [d, t = '', away = '', home = '', ...rest] = parts;
+    const [d, t = '', away = '', home = ''] = parts;
     const date = parseDate(d || '');
     if (!date) {
       row.error = /date|time|away|home/i.test(line) && rows.length === 1 ? 'header row (skipped)' : `can't read the date “${d}”`;
@@ -113,7 +113,7 @@ function parseSchedule(text) {
       return;
     }
     if (a.id === h.id) { row.error = 'away and home are the same team'; return; }
-    row.game = { date, time, location: rest.join(', ').trim(), away: a.id, home: h.id, status: 'scheduled' };
+    row.game = { date, time, away: a.id, home: h.id, status: 'scheduled' };
     if (admin.games.some(g => sameGame(g, row.game)) || pending.some(g => sameGame(g, row.game))) {
       row.error = 'already on the schedule';
       row.duplicate = true;
@@ -135,8 +135,8 @@ function renderScheduleTab() {
   const games = sortedAdminGames().filter(g => !team || g.away === team || g.home === team);
   const dhs = findDoubleheaders(admin.games);
   const example = DB.league.teams.length >= 2
-    ? `${seasonYear()}-05-12, 6:30 PM, ${DB.league.teams[0].name}, ${DB.league.teams[1].name}, Memorial Park Field 1`
-    : `${seasonYear()}-05-12, 6:30 PM, Away Team, Home Team, Field 1`;
+    ? `${seasonYear()}-05-12, 6:30 PM, ${DB.league.teams[0].name}, ${DB.league.teams[1].name}`
+    : `${seasonYear()}-05-12, 6:30 PM, Away Team, Home Team`;
 
   document.getElementById('admin-body').innerHTML = `
     <section class="card">
@@ -146,7 +146,6 @@ function renderScheduleTab() {
         <label>Time<input type="time" id="a-time" value="${esc(d.time)}"></label>
         <label>Away team${teamSel('a-away', d.away, 'Choose…')}</label>
         <label>Home team${teamSel('a-home', d.home, 'Choose…')}</label>
-        <label>Location<input type="text" id="a-location" value="${esc(d.location)}"></label>
         <label>Type<select id="a-type">
           <option value="regular">Regular season</option>
           <option value="playoff" ${d.type === 'playoff' ? 'selected' : ''}>Playoff</option>
@@ -157,8 +156,8 @@ function renderScheduleTab() {
 
     <section class="card">
       <h2>Add many games at once</h2>
-      <p class="small">Paste the season schedule, one game per line: <strong>date, time, away team, home team, location</strong>.
-        You can copy rows straight from a spreadsheet with the columns in that order. Location is optional.
+      <p class="small">Paste the season schedule, one game per line: <strong>date, time, away team, home team</strong>.
+        You can copy rows straight from a spreadsheet with the columns in that order.
         Teams can be written as names or short IDs (${DB.league.teams.map(t => esc(t.id)).join(', ')}).
         Dates can look like <code>2027-05-12</code>, <code>5/12/2027</code> (month first) or <code>May 12</code>; a missing year means ${seasonYear()}.
         Doubleheaders are just two lines with the same teams on the same day.</p>
@@ -177,7 +176,7 @@ function renderScheduleTab() {
       </div>
       <p class="muted small" style="margin-top:0">Changes here apply right away; click <strong>Save to website</strong> when you're done.</p>
       <div class="table-wrap"><table id="sched-table">
-        <thead><tr><th class="l">Date</th><th class="l">Time</th><th class="l">Away</th><th class="l">Home</th><th class="l">Location</th>
+        <thead><tr><th class="l">Date</th><th class="l">Time</th><th class="l">Away</th><th class="l">Home</th>
           <th class="l">Type</th><th class="l">Result</th><th></th></tr></thead>
         <tbody>${games.map(g => {
           const dh = dhs.get(g.id);
@@ -190,13 +189,12 @@ function renderScheduleTab() {
             <td class="l"><input type="time" data-id="${esc(g.id)}" data-f="time" value="${esc(g.time || '')}">${dh ? `<div class="muted small">DH game ${dh.game}</div>` : ''}</td>
             <td class="l">${sel('away', g.away)}</td>
             <td class="l">${sel('home', g.home)}</td>
-            <td class="l"><input type="text" data-id="${esc(g.id)}" data-f="location" value="${esc(g.location || '')}"></td>
             <td class="l"><select data-id="${esc(g.id)}" data-f="type">
               <option value="regular">Regular</option><option value="playoff" ${g.type === 'playoff' ? 'selected' : ''}>Playoff</option></select></td>
             <td class="l small">${esc(result)} <a href="#" data-result="${esc(g.id)}">${isFinal(g) ? 'Edit' : 'Enter'} result</a></td>
             <td><button class="btn danger" data-del="${esc(g.id)}" title="Delete game">✕</button></td>
           </tr>`;
-        }).join('') || `<tr><td colspan="8" class="l muted">${admin.games.length ? 'No games for this team.' : 'No games yet. Add them above.'}</td></tr>`}</tbody>
+        }).join('') || `<tr><td colspan="7" class="l muted">${admin.games.length ? 'No games for this team.' : 'No games yet. Add them above.'}</td></tr>`}</tbody>
       </table></div>
     </section>
     ${saveBar('games')}`;
@@ -204,19 +202,19 @@ function renderScheduleTab() {
   // Add one game
   const draft = () => {
     const v = id => document.getElementById(id).value.trim();
-    Object.assign(admin.addDraft, { date: v('a-date'), time: v('a-time'), away: v('a-away'), home: v('a-home'), location: v('a-location'), type: v('a-type') });
+    Object.assign(admin.addDraft, { date: v('a-date'), time: v('a-time'), away: v('a-away'), home: v('a-home'), type: v('a-type') });
   };
   document.getElementById('add-one').addEventListener('change', draft);
   document.getElementById('add-one').onsubmit = e => {
     e.preventDefault();
     draft();
-    const { date, time, away, home, location, type } = admin.addDraft;
+    const { date, time, away, home, type } = admin.addDraft;
     if (!away || !home) return showMessage('Choose both teams.');
     if (away === home) return showMessage('Away and home are the same team.');
-    const g = { id: newGameId(), date, time, location, away, home, ...(type === 'playoff' ? { type } : {}), status: 'scheduled' };
+    const g = { id: newGameId(), date, time, away, home, ...(type === 'playoff' ? { type } : {}), status: 'scheduled' };
     if (admin.games.some(x => sameGame(x, g))) return showMessage('That game is already on the schedule.');
     addGames([g]);
-    // Keep date, time and location for the next entry; teams usually change.
+    // Keep date and time for the next entry; teams usually change.
     admin.addDraft.away = admin.addDraft.home = '';
     renderScheduleTab();
     showMessage(`Added ${esc(teamName(away))} @ ${esc(teamName(home))} on ${esc(fmtDate(date))}. Click <strong>Save to website</strong> when you're done.`, 'info');
@@ -233,12 +231,12 @@ function renderScheduleTab() {
     if (!rows.length) { preview.innerHTML = '<p class="muted">Nothing to check: paste some games first.</p>'; return; }
     preview.innerHTML = `
       <div class="table-wrap" style="margin-top:1rem"><table>
-        <thead><tr><th>Line</th><th class="l">Date</th><th class="l">Time</th><th class="l">Away</th><th class="l">Home</th><th class="l">Location</th><th class="l"></th></tr></thead>
+        <thead><tr><th>Line</th><th class="l">Date</th><th class="l">Time</th><th class="l">Away</th><th class="l">Home</th><th class="l"></th></tr></thead>
         <tbody>${rows.map(r => r.game
           ? `<tr><td>${r.line}</td><td class="l">${esc(fmtDate(r.game.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }))}</td>
               <td class="l">${esc(fmtTime(r.game.time) || 'TBD')}</td><td class="l">${teamLabel(r.game.away)}</td><td class="l">${teamLabel(r.game.home)}</td>
-              <td class="l">${esc(r.game.location)}</td><td class="l ok-text">✓</td></tr>`
-          : `<tr><td>${r.line}</td><td class="l ${r.skip || r.duplicate ? 'muted' : 'warn'}" colspan="6">${esc(r.error)}: <code>${esc(r.raw)}</code></td></tr>`).join('')}</tbody>
+              <td class="l ok-text">✓</td></tr>`
+          : `<tr><td>${r.line}</td><td class="l ${r.skip || r.duplicate ? 'muted' : 'warn'}" colspan="5">${esc(r.error)}: <code>${esc(r.raw)}</code></td></tr>`).join('')}</tbody>
       </table></div>
       <div class="controls" style="margin-top:.75rem">
         <button class="btn" id="bulk-add" ${good.length ? '' : 'disabled'}>Add ${good.length} game${good.length === 1 ? '' : 's'}</button>

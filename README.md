@@ -70,13 +70,13 @@ the GitHub history, so any bad edit can be undone. The token can only change thi
 League admin → **Schedule** → *Add many games at once*. Paste one game per line, in this order:
 
 ```
-date, time, away team, home team, location
-2027-05-12, 6:30 PM, Thunder, Riverhawks, Memorial Park Field 1
-5/12/2027, 8:00 PM, THU, RIV, Memorial Park Field 1
+date, time, away team, home team
+2027-05-12, 6:30 PM, Thunder, Riverhawks
+5/12/2027, 8:00 PM, THU, RIV
 May 19, 6:30 PM, Hornets, Pioneers
 ```
 
-Copying those five columns straight out of a spreadsheet works too. Teams can be names or IDs; dates with no year use the
+Copying those four columns straight out of a spreadsheet works too. Teams can be names or IDs; dates with no year use the
 season year from `league.json`; times without AM/PM between 1 and 7 are read as PM. Click **Check** to see how every line
 was read (and which ones couldn't be), then **Add** and **Save to website**.
 - **Teams, league name, season:** edit `data/league.json` directly on GitHub (click the file → pencil icon).

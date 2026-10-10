@@ -119,12 +119,12 @@ const BAT_COLS = [
 ];
 // ---------- shared pieces ----------
 
-// Small print under a game: doubleheader / length, location, notes.
+// Small print under a game: doubleheader / length, notes.
 function gameInfo(g) {
   const dh = DB.doubleheaders.get(g.id);
   const inn = scheduledInnings(g);
   const len = dh ? `Doubleheader, Game ${dh.game} (${inn} inn.)` : (inn !== defaultInnings(g) ? `${inn} innings` : '');
-  return [len, g.location, g.notes].filter(Boolean).join(' · ');
+  return [len, g.notes].filter(Boolean).join(' · ');
 }
 
 function gameRow(g, { showDate = false } = {}) {
@@ -158,7 +158,7 @@ function standingsTable(rows, { compact = false } = {}) {
   const head = compact
     ? `<th class="l">Team</th><th>W</th><th>L</th>${anyTies ? '<th>T</th>' : ''}<th>PCT</th><th>GB</th>`
     : `<th class="l">Team</th><th>GP</th><th>W</th><th>L</th>${anyTies ? '<th>T</th>' : ''}<th>PCT</th><th>GB</th>
-       <th>RS</th><th>RA</th><th>DIFF</th><th>Home</th><th>Away</th><th>L10</th><th>STRK</th>`;
+       <th>RS</th><th>RA</th><th>DIFF</th><th>L10</th><th>STRK</th>`;
   const body = rows.map(r => {
     const name = `<a href="#/team/${encodeURIComponent(r.team.id)}">${teamLabel(r.team.id)}</a>`;
     return compact
@@ -166,7 +166,7 @@ function standingsTable(rows, { compact = false } = {}) {
       : `<tr><td class="l">${name}</td><td>${r.gp}</td><td>${r.w}</td><td>${r.l}</td>${anyTies ? `<td>${r.t}</td>` : ''}
          <td>${fmt.pct(r.pct)}</td><td>${fmt.gb(r.gb)}</td><td>${r.rs}</td><td>${r.ra}</td>
          <td class="${r.diff > 0 ? 'result-w' : r.diff < 0 ? 'result-l' : ''}">${fmt.diff(r.diff)}</td>
-         <td>${r.hw}-${r.hl}</td><td>${r.aw}-${r.al}</td><td>${r.last10}</td><td>${r.streak}</td></tr>`;
+         <td>${r.last10}</td><td>${r.streak}</td></tr>`;
   }).join('');
   return `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }

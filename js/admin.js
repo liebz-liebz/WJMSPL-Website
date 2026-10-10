@@ -372,7 +372,7 @@ function gameForm(g) {
     <section class="card">
       <h2 style="margin:0">${esc(teamName(g.away))} @ ${esc(teamName(g.home))}</h2>
       <p class="muted" style="margin:.25rem 0 0">${esc([fmtDate(g.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
-        fmtTime(g.time), dh ? `Doubleheader, game ${dh.game}` : '', g.type === 'playoff' ? 'Playoff' : '', g.location].filter(Boolean).join(' · '))}</p>
+        fmtTime(g.time), dh ? `Doubleheader, game ${dh.game}` : '', g.type === 'playoff' ? 'Playoff' : ''].filter(Boolean).join(' · '))}</p>
     </section>
     <section class="card">
       <h2>Result</h2>
@@ -431,8 +431,8 @@ function collectGameForm() {
   const known = ['id', 'date', 'time', 'location', 'away', 'home', 'type', 'innings', 'status', 'awayScore', 'homeScore',
     'inningsPlayed', 'mercy', 'notes', 'batting'];
   const extra = Object.fromEntries(Object.entries(g).filter(([k]) => !known.includes(k)));
-  // Date, teams, location and type are edited on the Schedule tab.
-  const next = { id: g.id, date: g.date || '', time: g.time || '', location: g.location || '', away: g.away, home: g.home };
+  // Date, teams and type are edited on the Schedule tab. Location isn't tracked (one field), so it's dropped.
+  const next = { id: g.id, date: g.date || '', time: g.time || '', away: g.away, home: g.home };
   if (g.type && g.type !== 'regular') next.type = g.type;
   // Only store a length when it differs from the league default for this kind of game.
   const inn = document.getElementById('g-innings');

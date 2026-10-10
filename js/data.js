@@ -99,7 +99,7 @@ function lineTeam(line) {
 
 function computeStandings() {
   const rows = Object.fromEntries(DB.league.teams.map(t => [t.id, {
-    team: t, w: 0, l: 0, t: 0, rs: 0, ra: 0, hw: 0, hl: 0, aw: 0, al: 0, results: [],
+    team: t, w: 0, l: 0, t: 0, rs: 0, ra: 0, results: [],
   }]));
 
   for (const g of sortedGames()) {
@@ -110,10 +110,10 @@ function computeStandings() {
     home.rs += hs; home.ra += as;
     away.rs += as; away.ra += hs;
     if (hs > as) {
-      home.w++; home.hw++; away.l++; away.al++;
+      home.w++; away.l++;
       home.results.push('W'); away.results.push('L');
     } else if (as > hs) {
-      away.w++; away.aw++; home.l++; home.hl++;
+      away.w++; home.l++;
       away.results.push('W'); home.results.push('L');
     } else {
       home.t++; away.t++;
