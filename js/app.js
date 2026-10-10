@@ -67,37 +67,59 @@ function wantedSeason(route, params) {
 }
 
 // Season dropdown for the page headers.
+// Regular season or playoffs, from ?playoffs=1 in the address.
+function viewPhase(params) {
+  return params.get('playoffs') === '1' ? 'playoffs' : 'regular';
+}
+function phaseBadge(phase) {
+  return phase === 'playoffs' ? ' <span class="badge playoffs">Playoffs</span>' : '';
+}
+
+// Season dropdown for the page headers: each season, then its playoffs ("2026", "2026 (Playoffs)").
 function seasonPicker() {
-  return `<label class="season-pick">Season <select id="f-season">${seasonList().map(y =>
-    `<option value="${esc(y)}" ${y === DB.season ? 'selected' : ''}>${esc(y)}${y === currentSeason() ? ' (current)' : ''}</option>`).join('')}</select></label>`;
+  const phase = viewPhase(parseHash().params);
+  const options = seasonList().flatMap(y => ['regular', 'playoffs'].map(ph =>
+    `<option value="${esc(y)}|${ph}" ${y === DB.season && ph === phase ? 'selected' : ''}>${esc(y)}${ph === 'playoffs' ? ' (Playoffs)' : ''}</option>`));
+  return `<label class="season-pick">Season <select id="f-season">${options.join('')}</select></label>`;
 }
 document.addEventListener('change', e => {
   if (e.target.id !== 'f-season') return;
   const { route, arg, params } = parseHash();
   const p = new URLSearchParams(params);
-  if (e.target.value === currentSeason()) p.delete('season'); else p.set('season', e.target.value);
-  p.delete('month'); // a calendar month belongs to the old season
+  const [season, phase] = e.target.value.split('|');
+  if (season === currentSeason()) p.delete('season'); else p.set('season', season);
+  if (phase === 'playoffs') p.set('playoffs', '1'); else p.delete('playoffs');
+  p.delete('month'); // a calendar month belongs to the old view
   const q = p.toString();
   location.hash = `#/${route}${arg ? '/' + encodeURIComponent(arg) : ''}${q ? '?' + q : ''}`;
 });
 
-// While viewing a past season, every link keeps ?season= so moving between pages stays in that season.
+// While viewing a past season or the playoffs, every link keeps ?season= / ?playoffs=1 so moving between
+// pages stays in that view. Home always shows the current regular season.
 function seasonLinks() {
   if (!DB.leagueFile) return;
-  const past = DB.season !== currentSeason() ? DB.season : null;
+  const { route, params } = parseHash();
+  const carry = {};
+  if (DB.season !== currentSeason()) carry.season = DB.season;
+  if (route !== 'home' && viewPhase(params) === 'playoffs') carry.playoffs = '1';
+  const keys = Object.keys(carry);
+  const withCarry = path => {
+    const [p0, q = ''] = path.split('?');
+    const p = new URLSearchParams(q);
+    for (const k of keys) p.set(k, carry[k]);
+    return `${p0}?${p}`;
+  };
   document.querySelectorAll('.site-nav a').forEach(a => {
     const r = a.dataset.route;
-    a.setAttribute('href', r === 'home' ? '#/' : `#/${r}${past ? `?season=${encodeURIComponent(past)}` : ''}`);
+    a.setAttribute('href', r === 'home' ? '#/' : keys.length ? withCarry(`#/${r}`) : `#/${r}`);
   });
-  if (!past) return;
+  if (!keys.length) return;
   $app.querySelectorAll('a[href^="#/"]').forEach(a => {
     const href = a.getAttribute('href');
-    if (href === '#/' || href.startsWith('#/admin')) return;
-    const [path, q = ''] = href.split('?');
-    const p = new URLSearchParams(q);
-    if (p.get('season') === past) return;
-    p.set('season', past);
-    a.setAttribute('href', `${path}?${p}`);
+    if (href === '#/' || href.startsWith('#/admin') || a.hasAttribute('data-keep')) return;
+    const p = new URLSearchParams(href.split('?')[1] || '');
+    if (keys.every(k => p.get(k) === carry[k])) return;
+    a.setAttribute('href', withCarry(href));
   });
 }
 new MutationObserver(seasonLinks).observe($app, { childList: true, subtree: true });
@@ -194,7 +216,7 @@ function gameInfo(g) {
   const dh = DB.doubleheaders.get(g.id);
   const inn = scheduledInnings(g);
   const len = dh ? `Doubleheader, Game ${dh.game} (${inn} inn.)` : (inn !== defaultInnings(g) ? `${inn} innings` : '');
-  return [len, g.notes].filter(Boolean).join(' · ');
+  return [gamePhase(g) === 'playoffs' ? 'Playoffs' : '', len, g.notes].filter(Boolean).join(' · ');
 }
 
 function gameRow(g, { showDate = false } = {}) {
@@ -310,16 +332,17 @@ function renderHome() {
 }
 
 function renderSchedule(_, params) {
+  const phase = viewPhase(params);
   const team = params.get('team') || '';
   const view = params.get('view') === 'calendar' ? 'calendar' : 'list';
   const show = params.get('show') || 'all';
   const today = todayISO();
-  let games = sortedGames().filter(g => !team || g.home === team || g.away === team);
+  let games = sortedGames().filter(g => gamePhase(g) === phase && (!team || g.home === team || g.away === team));
 
   // Team record summary when filtered
   let summary = '';
   if (team) {
-    const row = computeStandings().find(r => r.team.id === team);
+    const row = computeStandings(phase).find(r => r.team.id === team);
     if (row) summary = `<p class="muted">${esc(teamName(team))}: ${row.w}-${row.l}${row.t ? '-' + row.t : ''} · RS ${row.rs} · RA ${row.ra}</p>`;
   }
 
@@ -329,11 +352,11 @@ function renderSchedule(_, params) {
   } else {
     if (show === 'results') games = games.filter(isFinal).reverse();
     if (show === 'upcoming') games = games.filter(g => !isFinal(g) && (g.date || '') >= today);
-    content = gameList(games) || '<div class="empty">No games to show.</div>';
+    content = gameList(games) || `<div class="empty">${phase === 'playoffs' && !team && show === 'all' ? 'No playoff games scheduled yet.' : 'No games to show.'}</div>`;
   }
 
   $app.innerHTML = `
-    <div class="page-head"><h1>Schedule &amp; Results</h1>
+    <div class="page-head"><h1>Schedule &amp; Results${phaseBadge(phase)}</h1>
       <div class="controls">
         ${seasonPicker()}
         <select id="f-team">${teamOptions(team)}</select>
@@ -436,12 +459,27 @@ function calendarView(games, monthParam) {
   ${monthGames.length ? `<div class="cal-list">${gameList(monthGames)}</div>` : ''}`;
 }
 
-function renderStandings() {
-  const rows = computeStandings();
-  $app.innerHTML = `
-    <div class="page-head"><h1>Standings</h1>
-      <div class="controls">${seasonPicker()}</div></div>
-    <div class="card">${standingsTable(rows)}</div>
+function renderStandings(_, params) {
+  const phase = viewPhase(params);
+  const head = `<div class="page-head"><h1>Standings${phaseBadge(phase)}</h1>
+      <div class="controls">${seasonPicker()}</div></div>`;
+  if (phase === 'playoffs') {
+    // Playoff records for the teams that have played; games behind and streaks don't apply.
+    const rows = computeStandings('playoffs').filter(r => r.gp);
+    const anyTies = rows.some(r => r.t);
+    $app.innerHTML = `${head}
+      ${rows.length ? `<div class="card"><div class="table-wrap"><table>
+        <thead><tr><th class="l">Team</th><th>GP</th><th>W</th><th>L</th>${anyTies ? '<th>T</th>' : ''}<th>RS</th><th>RA</th><th>DIFF</th></tr></thead>
+        <tbody>${rows.map(r => `<tr><td class="l"><a href="#/team/${encodeURIComponent(r.team.id)}">${teamLabel(r.team.id)}</a></td>
+          <td>${r.gp}</td><td>${r.w}</td><td>${r.l}</td>${anyTies ? `<td>${r.t}</td>` : ''}<td>${r.rs}</td><td>${r.ra}</td>
+          <td class="${r.diff > 0 ? 'result-w' : r.diff < 0 ? 'result-l' : ''}">${fmt.diff(r.diff)}</td></tr>`).join('')}</tbody>
+      </table></div></div>
+      <p class="muted small">Playoff records only · RS/RA = runs scored/allowed. See every playoff game on the
+        <a href="#/schedule">schedule</a>.</p>` : '<div class="empty">No playoff games played yet.</div>'}`;
+    return;
+  }
+  $app.innerHTML = `${head}
+    <div class="card">${standingsTable(computeStandings())}</div>
     <p class="muted small">GB = games behind · RS/RA = runs scored/allowed · L10 = last 10 games · STRK = current streak.
     Ties count as half a win in PCT.</p>`;
 }
@@ -484,13 +522,14 @@ function renderStats(_, params) {
   const sortKey = cols.some(c => c.key === params.get('sort')) ? params.get('sort') : 'avg';
   const sortDesc = params.has('dir') ? params.get('dir') !== 'asc' : (cols.find(c => c.key === sortKey).desc !== false);
 
-  const stats = computePlayerStats({ team: team || null });
-  const q = qualifiers();
+  const phase = viewPhase(params);
+  const stats = computePlayerStats({ team: team || null, phase });
+  const q = qualifiers(phase);
   let rows = stats.batting;
   if (qualOnly) rows = rows.filter(q.batter);
 
   $app.innerHTML = `
-    <div class="page-head"><h1>Stats</h1>
+    <div class="page-head"><h1>Stats${phaseBadge(phase)}</h1>
       <div class="controls">
         ${seasonPicker()}
         <select id="f-team">${teamOptions(team)}</select>
@@ -512,11 +551,12 @@ function renderStats(_, params) {
 }
 
 function renderLeaders(_, params) {
+  const phase = viewPhase(params);
   const team = params.get('team') || '';
-  const stats = computePlayerStats({ team: team || null });
-  const q = qualifiers();
+  const stats = computePlayerStats({ team: team || null, phase });
+  const q = qualifiers(phase);
   $app.innerHTML = `
-    <div class="page-head"><h1>League Leaders</h1>
+    <div class="page-head"><h1>League Leaders${phaseBadge(phase)}</h1>
       <div class="controls">${seasonPicker()}<select id="f-team">${teamOptions(team)}</select></div></div>
     <div class="grid grid-3">${LEADER_CATS.map(c => leaderCard(stats.batting, c, 5, q.batter)).join('')}</div>
     <p class="muted small" style="margin-top:1rem">Rate stats (AVG, OBP, SLG, OPS) require ${q.paPerGame} plate appearances per team game.</p>`;
@@ -560,11 +600,12 @@ function renderGame(id) {
       <section class="card">${boxBattingTable(g, g.home)}</section>` : `<div class="empty">No box score has been entered for this game.</div>`}`;
 }
 
-function renderPlayer(id) {
+function renderPlayer(id, params) {
+  const phase = viewPhase(params);
   const p = DB.playersById[id];
-  const log = playerGameLog(id);
+  const log = playerGameLog(id, phase);
   if (!p && !log.length) return renderNotFound();
-  const all = computePlayerStats();
+  const all = computePlayerStats({ phase });
   const bat = all.batting.find(s => s.player === id);
   const name = p ? p.name : id;
   const statCols = (cols, row) => {
@@ -581,6 +622,13 @@ function renderPlayer(id) {
     return `<a href="#/game/${encodeURIComponent(e.game.id)}" class="${r === 'W' ? 'result-w' : r === 'L' ? 'result-l' : ''}">${r} ${us}-${them}</a>${extra}`;
   };
   const batLog = log.filter(e => e.bat);
+  // Link to the player's other view: their playoff stats, or back to the regular season.
+  const otherParams = new URLSearchParams(params);
+  if (phase === 'playoffs') otherParams.delete('playoffs'); else otherParams.set('playoffs', '1');
+  const otherHref = `#/player/${encodeURIComponent(id)}${otherParams.toString() ? '?' + otherParams : ''}`;
+  const otherView = phase === 'playoffs'
+    ? `<p><a href="${esc(otherHref)}" data-keep>&larr; Regular season stats</a></p>`
+    : playerGameLog(id, 'playoffs').length ? `<p><a href="${esc(otherHref)}" data-keep>Playoff stats &rarr;</a></p>` : '';
 
   $app.innerHTML = `
     <section class="card">
@@ -588,8 +636,10 @@ function renderPlayer(id) {
       ${p ? `<p class="muted" style="margin:0">${teamLabel(p.team)} · <a href="#/team/${encodeURIComponent(p.team)}">Roster</a>
 </p>` : ''}
     </section>
-    ${bat ? `<section class="card"><h2>Batting</h2>${statCols(BAT_COLS, bat)}</section>` : '<div class="empty">No stats recorded yet.</div>'}
-    ${batLog.length ? `<section class="card"><h2>Game Log</h2><div class="table-wrap"><table>
+    ${otherView}
+    ${bat ? `<section class="card"><h2>${esc(DB.season)} ${phase === 'playoffs' ? 'Playoffs' : 'Batting'}</h2>${statCols(BAT_COLS, bat)}</section>`
+      : `<div class="empty">No ${phase === 'playoffs' ? 'playoff ' : ''}stats recorded yet.</div>`}
+    ${batLog.length ? `<section class="card"><h2>Game Log${phaseBadge(phase)}</h2><div class="table-wrap"><table>
       <thead><tr><th class="l">Date</th><th class="l">Opp</th><th class="l">Result</th>${['AB', 'R', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'SF'].map(h => `<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${batLog.slice().reverse().map(e => `<tr><td class="l">${esc(fmtDate(e.game.date, { month: 'short', day: 'numeric' }))}</td>
         <td class="l">${esc(opp(e))}</td><td class="l">${res(e)}</td>

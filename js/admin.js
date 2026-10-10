@@ -358,7 +358,7 @@ function refreshDirtyLabel(kind) {
 function gameLabel(g) {
   const score = isFinal(g) ? ` ${num(g.awayScore)}-${num(g.homeScore)}${g.mercy ? ', mercy' : ''}` : '';
   const st = g.status && g.status !== 'scheduled' ? ` (${g.status}${score})` : '';
-  return `${g.date || 'TBD'} · ${teamName(g.away)} @ ${teamName(g.home)}${st}${admin.dirtyGames.has(g.id) ? ' *' : ''}`;
+  return `${g.date || 'TBD'} · ${gamePhase(g) === 'playoffs' ? 'Playoffs · ' : ''}${teamName(g.away)} @ ${teamName(g.home)}${st}${admin.dirtyGames.has(g.id) ? ' *' : ''}`;
 }
 
 function renderGamesTab() {

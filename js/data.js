@@ -102,8 +102,13 @@ const num = v => (v === undefined || v === null || v === '' ? 0 : Number(v) || 0
 function isFinal(g) {
   return g.status === 'final' && g.awayScore !== undefined && g.homeScore !== undefined;
 }
-function countsForStandings(g) {
-  return isFinal(g) && (g.type || 'regular') === 'regular';
+// Each season has two phases: the regular season and the playoffs (games with "type": "playoff").
+// Standings, stats and leaders are always for one phase.
+function gamePhase(g) {
+  return g.type === 'playoff' ? 'playoffs' : 'regular';
+}
+function countsForStandings(g, phase = 'regular') {
+  return isFinal(g) && gamePhase(g) === phase;
 }
 function hasBoxScore(g) {
   return isFinal(g) && !!(g.batting && g.batting.length);
@@ -120,13 +125,13 @@ function lineTeam(line) {
 
 // ---------- standings ----------
 
-function computeStandings() {
+function computeStandings(phase = 'regular') {
   const rows = Object.fromEntries(DB.league.teams.map(t => [t.id, {
     team: t, w: 0, l: 0, t: 0, rs: 0, ra: 0, results: [],
   }]));
 
   for (const g of sortedGames()) {
-    if (!countsForStandings(g)) continue;
+    if (!countsForStandings(g, phase)) continue;
     const home = rows[g.home], away = rows[g.away];
     if (!home || !away) continue;
     const hs = num(g.homeScore), as = num(g.awayScore);
@@ -189,11 +194,10 @@ function addBatLine(s, line) {
   BAT_KEYS.forEach(k => (s[k] += num(line[k])));
 }
 // Returns { batting: [...] } with one row per player who has appeared.
-function computePlayerStats({ team = null, includePlayoffs = false } = {}) {
+function computePlayerStats({ team = null, phase = 'regular' } = {}) {
   const bat = {};
   for (const g of DB.games) {
-    if (!hasBoxScore(g)) continue;
-    if (!includePlayoffs && (g.type || 'regular') !== 'regular') continue;
+    if (!hasBoxScore(g) || gamePhase(g) !== phase) continue;
     for (const line of g.batting || []) {
       const t = lineTeam(line);
       if (team && t !== team) continue;
@@ -208,20 +212,20 @@ function computePlayerStats({ team = null, includePlayoffs = false } = {}) {
 }
 
 // Number of games each team has a box score for (used for leader qualification).
-function teamBoxScoreGames() {
+function teamBoxScoreGames(phase = 'regular') {
   const counts = Object.fromEntries(DB.league.teams.map(t => [t.id, 0]));
   for (const g of DB.games) {
-    if (!hasBoxScore(g) || (g.type || 'regular') !== 'regular') continue;
+    if (!hasBoxScore(g) || gamePhase(g) !== phase) continue;
     if (g.home in counts) counts[g.home]++;
     if (g.away in counts) counts[g.away]++;
   }
   return counts;
 }
 
-function qualifiers() {
+function qualifiers(phase = 'regular') {
   const mins = DB.league.leaderMinimums || {};
   const pa = mins.plateAppearancesPerTeamGame ?? 2;
-  const tg = teamBoxScoreGames();
+  const tg = teamBoxScoreGames(phase);
   return {
     batter: s => s.pa >= Math.max(1, pa * (tg[s.team] || 0)),
     paPerGame: pa,
@@ -229,10 +233,10 @@ function qualifiers() {
 }
 
 // Per-game lines for one player, oldest first.
-function playerGameLog(playerId) {
+function playerGameLog(playerId, phase = 'regular') {
   const log = [];
   for (const g of sortedGames()) {
-    if (!hasBoxScore(g)) continue;
+    if (!hasBoxScore(g) || gamePhase(g) !== phase) continue;
     const b = (g.batting || []).find(l => l.player === playerId);
     if (b) log.push({ game: g, bat: b, team: lineTeam(b) });
   }

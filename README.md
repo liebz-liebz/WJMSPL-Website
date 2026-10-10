@@ -68,8 +68,8 @@ The token can only change this one repository.
 - **Add, edit or move players:** League admin → **Rosters**. Add one at a time, or open *Add many players at once* and paste
   one player per line (`name, team, jersey number`). Moving a player to a new team keeps their past stats with the old team.
 - **Add, reschedule or delete games:** League admin → **Schedule**. Add one game with the form, or paste many at once
-  (see below). Every game is listed underneath and can be edited in place. A *Playoff* game shows on the schedule but
-  doesn't count in standings or season stats.
+  (see below). Every game is listed underneath and can be edited in place. A game's *Type* can be Regular or *Playoff*;
+  playoff games are kept separate (see Playoffs below).
 - **Postpone or cancel a game:** League admin → **Results**, pick the game, and change its status.
 
 ### Adding a whole schedule at once
@@ -114,6 +114,18 @@ rosters can be edited without affecting the old season.
 **Past seasons:** use the **Editing season** dropdown (or *Edit* on the Seasons tab) to fix or fill in an older
 season. To add a season from before the site existed, start it from the Seasons tab with *Make it the current season*
 unticked, then fill in its teams, rosters and games. *Make current* on the Seasons tab switches the current season.
+
+## Playoffs
+
+Playoff games live in the same season as the regular season, marked as *Playoff*. The Season dropdown lists each season
+twice, e.g. **2026** and **2026 (Playoffs)**. The regular-season view leaves playoff games out entirely; the playoffs
+view shows only them: its own schedule and calendar, playoff records instead of the standings table, and playoff-only
+stats, leaders and player game logs. The home page shows the current regular season's standings and leaders, with
+playoff games appearing in its latest results and upcoming games.
+
+**Scheduling playoffs:** League admin → **Schedule**. Add one game with *Type: Playoff*, or paste a round of games and
+tick **These are playoff games** before adding them. Enter results in the **Results** tab as usual (playoff games are
+labelled there). The Schedule list's filter can show just the playoffs.
 
 ## Hosting (GitHub Pages, free)
 

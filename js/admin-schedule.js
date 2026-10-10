@@ -3,6 +3,8 @@
 admin.scheduleTeam = '';
 admin.addDraft = { date: '', time: '', away: '', home: '', type: 'regular' };
 admin.bulkText = '';
+admin.bulkPlayoffs = false;
+admin.scheduleType = ''; // '', 'regular' or 'playoffs'
 
 function newGameId(taken) {
   // Never reuse an ID, even one deleted in this session, so saves can't mix up old and new games.
@@ -132,7 +134,8 @@ function renderScheduleTab() {
   const teamSel = (id, val, blank) => `<select id="${id}">${blank ? `<option value="">${blank}</option>` : ''}${DB.league.teams.map(t =>
     `<option value="${esc(t.id)}" ${t.id === val ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>`;
   const team = admin.scheduleTeam;
-  const games = sortedAdminGames().filter(g => !team || g.away === team || g.home === team);
+  const games = sortedAdminGames().filter(g => (!team || g.away === team || g.home === team) &&
+    (!admin.scheduleType || gamePhase(g) === admin.scheduleType));
   const dhs = findDoubleheaders(admin.games);
   const example = DB.league.teams.length >= 2
     ? `${seasonYear()}-05-12, 6:30 PM, ${DB.league.teams[0].name}, ${DB.league.teams[1].name}`
@@ -163,13 +166,21 @@ function renderScheduleTab() {
         Doubleheaders are just two lines with the same teams on the same day.</p>
       <textarea id="bulk" rows="8" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:.85rem"
         placeholder="${esc(example)}">${esc(admin.bulkText)}</textarea>
-      <div class="controls" style="margin-top:.5rem"><button class="btn secondary" id="bulk-check">Check</button></div>
+      <div class="controls" style="margin-top:.5rem">
+        <button class="btn secondary" id="bulk-check">Check</button>
+        <label class="check"><input type="checkbox" id="bulk-playoffs" ${admin.bulkPlayoffs ? 'checked' : ''}> These are playoff games</label>
+      </div>
       <div id="bulk-preview"></div>
     </section>
 
     <section class="card">
       <div class="card-head"><h2>Schedule <span class="muted small">(${admin.games.length} game${admin.games.length === 1 ? '' : 's'})</span></h2>
         <div class="controls">
+          <select id="s-type">
+            <option value="">All games</option>
+            <option value="regular" ${admin.scheduleType === 'regular' ? 'selected' : ''}>Regular season</option>
+            <option value="playoffs" ${admin.scheduleType === 'playoffs' ? 'selected' : ''}>Playoffs</option>
+          </select>
           <select id="s-team">${teamOptions(team)}</select>
           ${admin.games.length ? '<button class="btn danger" id="s-clear">Delete all games</button>' : ''}
         </div>
@@ -194,7 +205,7 @@ function renderScheduleTab() {
             <td class="l small">${esc(result)} <a href="#" data-result="${esc(g.id)}">${isFinal(g) ? 'Edit' : 'Enter'} result</a></td>
             <td><button class="btn danger" data-del="${esc(g.id)}" title="Delete game">✕</button></td>
           </tr>`;
-        }).join('') || `<tr><td colspan="7" class="l muted">${admin.games.length ? 'No games for this team.' : 'No games yet. Add them above.'}</td></tr>`}</tbody>
+        }).join('') || `<tr><td colspan="7" class="l muted">${admin.games.length ? 'No games match these filters.' : 'No games yet. Add them above.'}</td></tr>`}</tbody>
       </table></div>
     </section>
     ${saveBar('games')}`;
@@ -239,26 +250,33 @@ function renderScheduleTab() {
           : `<tr><td>${r.line}</td><td class="l ${r.skip || r.duplicate ? 'muted' : 'warn'}" colspan="5">${esc(r.error)}: <code>${esc(r.raw)}</code></td></tr>`).join('')}</tbody>
       </table></div>
       <div class="controls" style="margin-top:.75rem">
-        <button class="btn" id="bulk-add" ${good.length ? '' : 'disabled'}>Add ${good.length} game${good.length === 1 ? '' : 's'}</button>
+        <button class="btn" id="bulk-add" ${good.length ? '' : 'disabled'}>Add ${good.length} ${document.getElementById('bulk-playoffs').checked ? 'playoff ' : ''}game${good.length === 1 ? '' : 's'}</button>
         ${bad.length ? `<span class="warn">${bad.length} line${bad.length === 1 ? '' : 's'} can't be read. Fix them above and click Check again, or add the rest now.</span>`
           : '<span class="muted small">Check the dates and times look right, then add.</span>'}
       </div>`;
     const btn = document.getElementById('bulk-add');
     if (btn) btn.onclick = () => {
       const ids = [];
+      const playoffs = document.getElementById('bulk-playoffs').checked;
       addGames(good.map(r => {
         const id = newGameId(ids);
         ids.push(id);
-        return { id, ...r.game };
+        const { status, ...rest } = r.game;
+        return { id, ...rest, ...(playoffs ? { type: 'playoff' } : {}), status };
       }));
       admin.bulkText = '';
       renderScheduleTab();
-      showMessage(`Added ${good.length} game${good.length === 1 ? '' : 's'}. Click <strong>Save to website</strong> to publish the schedule.`, 'info');
+      showMessage(`Added ${good.length} ${playoffs ? 'playoff ' : ''}game${good.length === 1 ? '' : 's'}. Click <strong>Save to website</strong> to publish the schedule.`, 'info');
     };
   };
 
   // Table edits
   document.getElementById('s-team').onchange = e => { admin.scheduleTeam = e.target.value; renderScheduleTab(); };
+  document.getElementById('s-type').onchange = e => { admin.scheduleType = e.target.value; renderScheduleTab(); };
+  document.getElementById('bulk-playoffs').onchange = e => {
+    admin.bulkPlayoffs = e.target.checked;
+    document.getElementById('bulk-preview').innerHTML = '';
+  };
   const table = document.getElementById('sched-table');
   table.addEventListener('change', e => {
     const el = e.target;
