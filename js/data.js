@@ -9,7 +9,7 @@ const DB = {
   playersById: {},
 };
 
-const BAT_KEYS = ['ab', 'r', 'h', '2b', '3b', 'hr', 'rbi', 'bb', 'so', 'sb', 'hbp', 'sf'];
+const BAT_KEYS = ['ab', 'r', 'h', '2b', '3b', 'hr', 'bb', 'so', 'sf'];
 
 async function fetchJSON(path) {
   const res = await fetch(path, { cache: 'no-cache' });
@@ -152,10 +152,11 @@ function emptyBat() {
   return o;
 }
 function finishBat(s) {
-  s.pa = s.ab + s.bb + s.hbp + s.sf;
+  s.pa = s.ab + s.bb + s.sf;
   s.tb = s.h + s['2b'] + 2 * s['3b'] + 3 * s.hr;
+  s.xbh = s['2b'] + s['3b'] + s.hr;
   s.avg = s.ab ? s.h / s.ab : 0;
-  s.obp = s.pa ? (s.h + s.bb + s.hbp) / s.pa : 0;
+  s.obp = s.pa ? (s.h + s.bb) / s.pa : 0;
   s.slg = s.ab ? s.tb / s.ab : 0;
   s.ops = s.obp + s.slg;
   return s;

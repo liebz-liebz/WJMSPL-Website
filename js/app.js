@@ -109,11 +109,9 @@ const BAT_COLS = [
   { key: '2b', label: '2B', value: r => r['2b'] },
   { key: '3b', label: '3B', value: r => r['3b'] },
   { key: 'hr', label: 'HR', value: r => r.hr },
-  { key: 'rbi', label: 'RBI', value: r => r.rbi },
   { key: 'bb', label: 'BB', value: r => r.bb },
   { key: 'so', label: 'SO', value: r => r.so },
-  { key: 'sb', label: 'SB', value: r => r.sb },
-  { key: 'hbp', label: 'HBP', value: r => r.hbp },
+  { key: 'sf', label: 'SF', value: r => r.sf },
   { key: 'avg', label: 'AVG', value: r => r.avg, display: r => fmt.avg(r.avg) },
   { key: 'obp', label: 'OBP', value: r => r.obp, display: r => fmt.avg(r.obp) },
   { key: 'slg', label: 'SLG', value: r => r.slg, display: r => fmt.avg(r.slg) },
@@ -178,14 +176,14 @@ function standingsTable(rows, { compact = false } = {}) {
 const LEADER_CATS = [
   { key: 'avg', label: 'Batting Average', value: s => s.avg, show: s => fmt.avg(s.avg), qualified: true },
   { key: 'hr', label: 'Home Runs', value: s => s.hr },
-  { key: 'rbi', label: 'Runs Batted In', value: s => s.rbi },
   { key: 'h', label: 'Hits', value: s => s.h },
   { key: 'r', label: 'Runs', value: s => s.r },
-  { key: 'sb', label: 'Stolen Bases', value: s => s.sb },
+  { key: 'xbh', label: 'Extra-Base Hits', value: s => s.xbh },
   { key: 'obp', label: 'On-Base Pct', value: s => s.obp, show: s => fmt.avg(s.obp), qualified: true },
   { key: 'slg', label: 'Slugging Pct', value: s => s.slg, show: s => fmt.avg(s.slg), qualified: true },
   { key: 'ops', label: 'OPS', value: s => s.ops, show: s => fmt.avg(s.ops), qualified: true },
   { key: '2b', label: 'Doubles', value: s => s['2b'] },
+  { key: '3b', label: 'Triples', value: s => s['3b'] },
   { key: 'bb', label: 'Walks', value: s => s.bb },
   { key: 'tb', label: 'Total Bases', value: s => s.tb },
 ];
@@ -214,7 +212,7 @@ function renderHome() {
   const upcoming = games.filter(g => !isFinal(g) && (g.status || 'scheduled') === 'scheduled' && (g.date || '') >= today).slice(0, 4);
   const stats = computePlayerStats();
   const q = qualifiers();
-  const homeCats = ['avg', 'hr', 'rbi', 'h', 'r', 'ops'].map(k => LEADER_CATS.find(c => c.key === k));
+  const homeCats = ['avg', 'hr', 'h', 'r', 'obp', 'ops'].map(k => LEADER_CATS.find(c => c.key === k));
 
   $app.innerHTML = `
     <section class="hero">
@@ -372,7 +370,7 @@ function boxBattingTable(g, team) {
   const lines = (g.batting || []).filter(l => lineTeam(l) === team);
   const tot = emptyBat();
   lines.forEach(l => addBatLine(tot, l));
-  const cols = ['ab', 'r', 'h', 'rbi', 'bb', 'so', '2b', '3b', 'hr', 'sb'];
+  const cols = ['ab', 'r', 'h', '2b', '3b', 'hr', 'bb', 'so'];
   return `<div class="table-wrap"><table>
     <thead><tr><th class="l">${esc(teamName(team))} Batting</th>${cols.map(c => `<th>${c.toUpperCase()}</th>`).join('')}</tr></thead>
     <tbody>${lines.map(l => `<tr><td class="l">${playerLink(l.player)}</td>${cols.map(c => `<td>${num(l[c])}</td>`).join('')}</tr>`).join('') ||
@@ -431,10 +429,10 @@ function renderPlayer(id) {
     </section>
     ${bat ? `<section class="card"><h2>Batting</h2>${statCols(BAT_COLS, bat)}</section>` : '<div class="empty">No stats recorded yet.</div>'}
     ${batLog.length ? `<section class="card"><h2>Game Log</h2><div class="table-wrap"><table>
-      <thead><tr><th class="l">Date</th><th class="l">Opp</th><th class="l">Result</th>${['AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'SO', 'SB'].map(h => `<th>${h}</th>`).join('')}</tr></thead>
+      <thead><tr><th class="l">Date</th><th class="l">Opp</th><th class="l">Result</th>${['AB', 'R', 'H', '2B', '3B', 'HR', 'BB', 'SO'].map(h => `<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${batLog.slice().reverse().map(e => `<tr><td class="l">${esc(fmtDate(e.game.date, { month: 'short', day: 'numeric' }))}</td>
         <td class="l">${esc(opp(e))}</td><td class="l">${res(e)}</td>
-        ${['ab', 'r', 'h', '2b', '3b', 'hr', 'rbi', 'bb', 'so', 'sb'].map(k => `<td>${num(e.bat[k])}</td>`).join('')}</tr>`).join('')}</tbody>
+        ${['ab', 'r', 'h', '2b', '3b', 'hr', 'bb', 'so'].map(k => `<td>${num(e.bat[k])}</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div></section>` : ''}`;
 }
 
