@@ -106,8 +106,8 @@ th.sorted { color: var(--red); }
 th.sorted::after { content: " ▼"; font-size: .7em; }
 th.sorted.asc::after { content: " ▲"; }
 td.num-col { color: var(--muted); }
-.team-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: .4rem; vertical-align: middle; }
-.team-tag { display: inline-block; font-size: .72rem; font-weight: 700; padding: .05rem .35rem; border-radius: 4px; color: #fff; vertical-align: middle; }
+.team-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: .4rem; vertical-align: middle; box-shadow: inset 0 0 0 1px #0003; }
+.team-tag { display: inline-block; font-size: .72rem; font-weight: 700; padding: .05rem .35rem; border-radius: 4px; color: #fff; vertical-align: middle; box-shadow: inset 0 0 0 1px #0002; }
 
 /* Schedule */
 .day { margin-bottom: 1.25rem; }

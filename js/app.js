@@ -11,8 +11,15 @@ function teamAbbr(id) { return (DB.teamsById[id] || {}).short || id; }
 function teamLabel(id) {
   return `<span class="team-dot" style="background:${esc(teamColor(id))}"></span>${esc(teamName(id))}`;
 }
+// Dark text on light team colours (e.g. white), white text on dark ones.
+function textOn(hex) {
+  const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
+  if (!m) return '#fff';
+  const [r, g, b] = m.slice(1).map(x => parseInt(x, 16) / 255).map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#1b1f24' : '#fff';
+}
 function teamTag(id) {
-  return `<span class="team-tag" style="background:${esc(teamColor(id))}">${esc(teamAbbr(id))}</span>`;
+  return `<span class="team-tag" style="background:${esc(teamColor(id))};color:${textOn(teamColor(id))}">${esc(teamAbbr(id))}</span>`;
 }
 function playerName(id) { return (DB.playersById[id] || { name: id }).name; }
 function playerLink(id) { return `<a href="#/player/${encodeURIComponent(id)}">${esc(playerName(id))}</a>`; }

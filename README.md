@@ -110,6 +110,12 @@ GitHub Pages is free for public repositories. Private repositories need a paid G
 From this folder, run `python3 -m http.server` and open http://localhost:8000. (Opening `index.html` directly
 won't work because browsers block loading the data files that way.) Saving from a local copy still writes to GitHub.
 
+## Changing the site's code
+
+Browsers keep copies of the site's files for a few minutes. Whenever you change anything in `css/` or `js/`, bump the
+`?v=` number on every stylesheet and script link in `index.html` (e.g. `?v=2` → `?v=3`). Otherwise visitors can get the
+new page with old styles or scripts, which looks broken until their copy expires. Data files don't need this.
+
 ## How the files fit together
 
 ```
