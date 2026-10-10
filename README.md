@@ -2,18 +2,18 @@
 
 The website for the Winnipeg Jewish Men's Slo Pitch League: a simple, free-to-host site with **Schedule, Standings, Rosters, Stats and League Leaders**.
 
-There's no database or server. Everything comes from three data files, and the site works out
-standings, player stats and leaders automatically from the game results:
+There's no database or server. Everything comes from data files, and the site works out standings, player stats
+and leaders automatically from the game results. Each season has its own folder, so past seasons stay on the site:
 
 | File | What's in it |
 | --- | --- |
-| `data/league.json` | League name, season, teams (name, abbreviation, colour), settings |
-| `data/players.json` | Every player: name, jersey number, team |
-| `data/games.json` | The schedule, final scores, and (optionally) each game's box score |
+| `data/league.json` | League name, settings, the list of seasons and which one is current |
+| `data/seasons/<year>/teams.json` | That season's teams: name, abbreviation, colour |
+| `data/seasons/<year>/players.json` | That season's rosters: name, jersey number, team |
+| `data/seasons/<year>/games.json` | That season's schedule, final scores, and (optionally) each game's box score |
 | `data/admin.json` | Created by the admin setup: the GitHub connection, locked with the admin password and secret key |
 
-> The data that ships with the site is **made-up sample data** so you can see how everything looks.
-> Replace it with your real teams, players and schedule before the season (see below).
+Everything in the admin page edits one season at a time: the **Editing season** dropdown at the top picks which.
 
 ---
 
@@ -84,11 +84,14 @@ May 19, 6:30 PM, Hornets, Pioneers
 ```
 
 Copying those four columns straight out of a spreadsheet works too. Teams can be names or abbreviations; dates with no year use the
-season year (set on the Teams tab); times without AM/PM between 1 and 7 are read as PM. Click **Check** to see how every line
+year of the season you're editing; times without AM/PM between 1 and 7 are read as PM. Click **Check** to see how every line
 was read (and which ones couldn't be), then **Add** and **Save to website**.
-- **Teams and season:** League admin → **Teams**. Edit names, abbreviations (shown next to players in stats and on
-  the calendar) and colours, add teams, and set the season year. A team can be deleted once it has no players or games.
-  Renaming a team keeps all its games and stats. The league's name lives in `data/league.json` (edit on GitHub).
+
+### Teams
+
+League admin → **Teams** edits the teams of the season you're editing: names, abbreviations (shown next to players in
+stats and on the calendar) and colours. A team can be deleted once it has no players or games. Renaming a team keeps
+all its games and stats. The league's name lives in `data/league.json` (edit on GitHub).
 
 ### Settings in `league.json`
 
@@ -97,12 +100,20 @@ was read (and which ones couldn't be), then **Add** and **Save to website**.
   `plateAppearancesPerTeamGame: 2` means 2 plate appearances for every game their team has a box score for.
 - `github`: the repository the admin page saves to (pre-fills the setup form).
 
-## Starting the real season
+## Seasons
 
-1. League admin → **Teams**: set the season, rename the sample teams to yours (or add yours), and **Save to website**.
-   Delete leftover sample teams after clearing the schedule and rosters (steps 2–3).
-2. League admin → **Schedule**: click **Delete all games** to clear the sample games, paste your schedule, then **Save to website**.
-3. League admin → **Rosters**: click **Remove all players**, paste your rosters under *Add many players at once*, then **Save to website**.
+Visitors pick a season with the **Season** dropdown on the Schedule, Standings, Rosters, Stats and Leaders pages (the
+choice stays as they move between those pages, and is part of the page address, so links can be shared). The home page
+always shows the **current season**.
+
+**Starting a new season:** League admin → **Seasons** → *Start a new season*. Give it a name (e.g. `2027`), choose
+whether to copy the teams and rosters from the season you're editing, and whether to make it the current season.
+It starts with no games; add them in the **Schedule** tab. Copied players keep their IDs, and copied teams and
+rosters can be edited without affecting the old season.
+
+**Past seasons:** use the **Editing season** dropdown (or *Edit* on the Seasons tab) to fix or fill in an older
+season. To add a season from before the site existed, start it from the Seasons tab with *Make it the current season*
+unticked, then fill in its teams, rosters and games. *Make current* on the Seasons tab switches the current season.
 
 ## Hosting (GitHub Pages, free)
 
@@ -130,8 +141,9 @@ index.html        page shell + navigation
 css/style.css     all styling (colors are at the top)
 js/data.js        loads data files; computes standings, stats, leaders
 js/app.js         public pages: home, schedule (list + calendar), standings, rosters, stats, leaders, box scores, player pages
-js/admin.js       League admin page (sign-in, results entry, rosters)
+js/admin.js       League admin page (sign-in, editing season, results entry, rosters)
 js/admin-lock.js  admin password + super secret key (data/admin.json) and the Settings tab
 js/admin-schedule.js  League admin → Schedule tab (add, paste and edit games)
-data/*.json       the league's data
+js/admin-teams.js League admin → Teams and Seasons tabs
+data/             the league's data (league.json, admin.json, seasons/<year>/)
 ```

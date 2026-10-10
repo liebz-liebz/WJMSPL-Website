@@ -91,6 +91,7 @@ select, input[type=text], input[type=number], input[type=date], input[type=time]
 .seg { display: inline-flex; border: 1px solid var(--navy); border-radius: 6px; overflow: hidden; }
 .seg button { border: 0; background: #fff; color: var(--navy); padding: .4rem .9rem; cursor: pointer; font-weight: 600; }
 .seg button.active { background: var(--navy); color: #fff; }
+.season-pick { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; font-size: .9rem; color: #3b4452; }
 label.check { display: inline-flex; gap: .35rem; align-items: center; cursor: pointer; }
 
 /* Tables */
@@ -124,6 +125,8 @@ td.num-col { color: var(--muted); }
 .status.postponed, .status.cancelled { color: var(--loss); }
 .status.scheduled { color: var(--win); }
 .badge { display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: .08rem .4rem; border-radius: 4px; }
+.badge.current { background: #dcfce7; color: #166534; border: 1px solid #22c55e; }
+.admin-season { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin: -.25rem 0 1rem; }
 .badge.mercy { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
 .result-w { color: var(--win); font-weight: 700; }
 .result-l { color: var(--loss); font-weight: 700; }

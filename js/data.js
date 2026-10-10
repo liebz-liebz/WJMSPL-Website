@@ -1,7 +1,13 @@
 // Loads the league data files and computes standings / stats from game results.
-// Everything on the site is derived from data/league.json, data/players.json and data/games.json.
+//
+// data/league.json             league-wide settings, the list of seasons and which one is current
+// data/seasons/<year>/teams.json, players.json, games.json   one folder per season
+//
+// One season is loaded at a time. DB.league is league.json plus that season's `season` and `teams`.
 
 const DB = {
+  leagueFile: null, // data/league.json as saved
+  season: null,     // the season currently loaded
   league: null,
   players: [],
   games: [],
@@ -21,17 +27,34 @@ async function fetchJSON(path) {
   }
 }
 
+function seasonPath(season, file) {
+  return `data/seasons/${encodeURIComponent(season)}/${file}`;
+}
+function currentSeason() {
+  return DB.leagueFile.currentSeason;
+}
+// Newest first.
+function seasonList() {
+  return [...(DB.leagueFile.seasons || [])].sort((a, b) => String(b).localeCompare(String(a), undefined, { numeric: true }));
+}
+
 async function loadData() {
-  const [league, players, games] = await Promise.all([
-    fetchJSON('data/league.json'),
-    fetchJSON('data/players.json'),
-    fetchJSON('data/games.json'),
-  ]);
-  setData(league, players, games);
+  DB.leagueFile = await fetchJSON('data/league.json');
+  await loadSeason(currentSeason());
+}
+
+async function loadSeason(season) {
+  const [teams, players, games] = await Promise.all(['teams', 'players', 'games'].map(f => fetchJSON(seasonPath(season, `${f}.json`))));
+  setSeasonData(season, teams, players, games);
+}
+
+function setSeasonData(season, teams, players, games) {
+  setData({ ...DB.leagueFile, season, teams }, players, games);
 }
 
 function setData(league, players, games) {
   DB.league = league;
+  DB.season = league.season;
   DB.players = players;
   DB.games = games;
   DB.teamsById = Object.fromEntries(league.teams.map(t => [t.id, t]));
@@ -259,6 +282,10 @@ function serializeGames(games) {
     return `  {\n${parts.join(',\n')}\n  }`;
   });
   return `[\n${blocks.join(',\n')}\n]\n`;
+}
+// teams.json uses the same one-row-per-line layout as players.json.
+function serializeTeams(teams) {
+  return serializePlayers(teams);
 }
 function serializePlayers(players) {
   return `[\n${players.map(p => '  ' + inlineJSON(p)).join(',\n')}\n]\n`;

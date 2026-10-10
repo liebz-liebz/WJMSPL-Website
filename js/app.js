@@ -58,12 +58,71 @@ const routes = {
   }),
 };
 
-function router() {
+// ---------- seasons ----------
+
+// The season a page shows: ?season= in the address, else the current season. Home always shows the current one.
+function wantedSeason(route, params) {
+  const s = params.get('season');
+  return route === 'home' || !s || !(DB.leagueFile.seasons || []).includes(s) ? currentSeason() : s;
+}
+
+// Season dropdown for the page headers.
+function seasonPicker() {
+  return `<label class="season-pick">Season <select id="f-season">${seasonList().map(y =>
+    `<option value="${esc(y)}" ${y === DB.season ? 'selected' : ''}>${esc(y)}${y === currentSeason() ? ' (current)' : ''}</option>`).join('')}</select></label>`;
+}
+document.addEventListener('change', e => {
+  if (e.target.id !== 'f-season') return;
+  const { route, arg, params } = parseHash();
+  const p = new URLSearchParams(params);
+  if (e.target.value === currentSeason()) p.delete('season'); else p.set('season', e.target.value);
+  p.delete('month'); // a calendar month belongs to the old season
+  const q = p.toString();
+  location.hash = `#/${route}${arg ? '/' + encodeURIComponent(arg) : ''}${q ? '?' + q : ''}`;
+});
+
+// While viewing a past season, every link keeps ?season= so moving between pages stays in that season.
+function seasonLinks() {
+  if (!DB.leagueFile) return;
+  const past = DB.season !== currentSeason() ? DB.season : null;
+  document.querySelectorAll('.site-nav a').forEach(a => {
+    const r = a.dataset.route;
+    a.setAttribute('href', r === 'home' ? '#/' : `#/${r}${past ? `?season=${encodeURIComponent(past)}` : ''}`);
+  });
+  if (!past) return;
+  $app.querySelectorAll('a[href^="#/"]').forEach(a => {
+    const href = a.getAttribute('href');
+    if (href === '#/' || href.startsWith('#/admin')) return;
+    const [path, q = ''] = href.split('?');
+    const p = new URLSearchParams(q);
+    if (p.get('season') === past) return;
+    p.set('season', past);
+    a.setAttribute('href', `${path}?${p}`);
+  });
+}
+new MutationObserver(seasonLinks).observe($app, { childList: true, subtree: true });
+
+async function router() {
+  const hash = location.hash;
   const { route, arg, params } = parseHash();
   document.querySelectorAll('.site-nav a').forEach(a =>
     a.classList.toggle('active', a.dataset.route === route || (route === 'team' && a.dataset.route === 'rosters')));
   document.getElementById('site-nav').classList.remove('open');
   document.querySelector('.nav-toggle').setAttribute('aria-expanded', 'false');
+  if (route !== 'admin') {
+    const season = wantedSeason(route, params);
+    if (season !== DB.season) {
+      $app.innerHTML = '<p class="muted">Loading…</p>';
+      try {
+        await loadSeason(season);
+      } catch (e) {
+        $app.innerHTML = `<div class="notice"><strong>Could not load the ${esc(season)} season.</strong><br>${esc(e.message)}</div>`;
+        return;
+      }
+      if (location.hash !== hash) return; // the visitor moved on while it loaded
+      applyLeagueInfo();
+    }
+  }
   const fn = routes[route] || renderNotFound;
   try {
     fn(arg, params);
@@ -71,6 +130,7 @@ function router() {
     console.error(e);
     $app.innerHTML = `<div class="notice"><strong>Something went wrong showing this page.</strong><br>${esc(e.message)}</div>`;
   }
+  seasonLinks();
   window.scrollTo(0, 0);
 }
 
@@ -275,6 +335,7 @@ function renderSchedule(_, params) {
   $app.innerHTML = `
     <div class="page-head"><h1>Schedule &amp; Results</h1>
       <div class="controls">
+        ${seasonPicker()}
         <select id="f-team">${teamOptions(team)}</select>
         <div class="seg" id="f-view">
           ${['list', 'calendar'].map(v => `<button data-v="${v}" class="${v === view ? 'active' : ''}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}
@@ -379,7 +440,8 @@ function renderStandings() {
   const rows = computeStandings();
   const played = DB.games.filter(countsForStandings).length;
   $app.innerHTML = `
-    <div class="page-head"><h1>Standings</h1><span class="muted">${played} game${played === 1 ? '' : 's'} played</span></div>
+    <div class="page-head"><h1>Standings</h1>
+      <div class="controls">${seasonPicker()}<span class="muted">${played} game${played === 1 ? '' : 's'} played</span></div></div>
     <div class="card">${standingsTable(rows)}</div>
     <p class="muted small">GB = games behind · RS/RA = runs scored/allowed · L10 = last 10 games · STRK = current streak.
     Ties count as half a win in PCT.</p>`;
@@ -408,9 +470,12 @@ function renderRosters(teamArg) {
 
   $app.innerHTML = `
     <div class="page-head"><h1>Rosters</h1>
-      <div class="controls"><select id="f-team">${teamOptions(selected)}</select></div></div>
+      <div class="controls">${seasonPicker()}<select id="f-team">${teamOptions(selected)}</select></div></div>
     <div class="grid grid-2">${(selected ? teams.filter(t => t.id === selected) : teams).map(teamCard).join('')}</div>`;
-  document.getElementById('f-team').onchange = e => { location.hash = e.target.value ? `#/team/${encodeURIComponent(e.target.value)}` : '#/rosters'; };
+  document.getElementById('f-team').onchange = e => {
+    const season = DB.season !== currentSeason() ? `?season=${encodeURIComponent(DB.season)}` : '';
+    location.hash = (e.target.value ? `#/team/${encodeURIComponent(e.target.value)}` : '#/rosters') + season;
+  };
 }
 
 function renderStats(_, params) {
@@ -428,6 +493,7 @@ function renderStats(_, params) {
   $app.innerHTML = `
     <div class="page-head"><h1>Stats</h1>
       <div class="controls">
+        ${seasonPicker()}
         <select id="f-team">${teamOptions(team)}</select>
         <label class="check"><input type="checkbox" id="f-qual" ${qualOnly ? 'checked' : ''}> Qualified only</label>
       </div>
@@ -452,11 +518,12 @@ function renderLeaders(_, params) {
   const q = qualifiers();
   $app.innerHTML = `
     <div class="page-head"><h1>League Leaders</h1>
-      <div class="controls"><select id="f-team">${teamOptions(team)}</select></div></div>
+      <div class="controls">${seasonPicker()}<select id="f-team">${teamOptions(team)}</select></div></div>
     <div class="grid grid-3">${LEADER_CATS.map(c => leaderCard(stats.batting, c, 5, q.batter)).join('')}</div>
     <p class="muted small" style="margin-top:1rem">Rate stats (AVG, OBP, SLG, OPS) require ${q.paPerGame} plate appearances per team game.</p>`;
   document.getElementById('f-team').onchange = e => {
-    const p = new URLSearchParams(); if (e.target.value) p.set('team', e.target.value);
+    const p = new URLSearchParams(params);
+    if (e.target.value) p.set('team', e.target.value); else p.delete('team');
     setParams(p); renderLeaders(_, p);
   };
 }

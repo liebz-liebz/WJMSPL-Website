@@ -55,6 +55,7 @@ function signOut() {
   admin.teamsDirty = false;
   admin.message = null;
   admin.tab = 'games';
+  admin.season = null;
   renderAdmin();
 }
 
@@ -85,6 +86,8 @@ async function loadAdminData() {
     } catch (e) {
       if (attempt === 0 && e.status === 401 && await refreshTokenFromLock()) continue;
       admin.loadError = e.message;
+      admin.season = DB.season;
+      admin.saved = { league: DB.league, players: DB.players, games: DB.games };
       initAdminData(DB.games, DB.players);
       return;
     }
@@ -92,11 +95,46 @@ async function loadAdminData() {
 }
 
 async function loadFromGitHub() {
-  const [games, players, league] = await Promise.all(['data/games.json', 'data/players.json', 'data/league.json']
-    .map(async p => JSON.parse((await ghReadFile(admin.creds, p)).text)));
-  setData(league, players, games);
+  const read = async path => JSON.parse((await ghReadFile(admin.creds, path)).text);
+  const league = await read('data/league.json');
+  DB.leagueFile = league;
+  if (!admin.season || !(league.seasons || []).includes(admin.season)) admin.season = league.currentSeason;
+  const [teams, players, games] = await Promise.all(['teams', 'players', 'games'].map(f => read(seasonPath(admin.season, `${f}.json`))));
+  adminSetData({ ...league, season: admin.season, teams }, players, games);
   applyLeagueInfo();
   initAdminData(games, players);
+}
+
+// The admin edits one season at a time. This keeps the saved copy of that season in DB (team names,
+// what's already saved) and remembers it, since the public pages may load a different season in between.
+function adminSetData(league, players, games) {
+  setData(league, players, games);
+  admin.saved = { league, players, games };
+}
+
+function adminSeasonPicker() {
+  const isCurrent = admin.season === currentSeason();
+  return `<div class="admin-season">
+    <label class="season-pick">Editing season <select id="admin-season">${seasonList().map(y =>
+      `<option value="${esc(y)}" ${y === admin.season ? 'selected' : ''}>${esc(y)}${y === currentSeason() ? ' (current)' : ''}</option>`).join('')}</select></label>
+    ${isCurrent ? '' : '<span class="warn small">You are editing a past season.</span>'}
+  </div>`;
+}
+
+function switchSeason(season, message = null) {
+  if (season === admin.season) return;
+  if (hasUnsaved() && !confirm('You have unsaved changes in this season. Switch anyway and lose them?')) {
+    renderAdmin();
+    return;
+  }
+  admin.season = season;
+  admin.dirtyGames.clear();
+  admin.deletedGames.clear();
+  admin.playersDirty = false;
+  admin.teamsDirty = false;
+  admin.message = message;
+  admin.ready = false;
+  renderAdmin();
 }
 
 window.addEventListener('beforeunload', e => {
@@ -122,7 +160,12 @@ async function renderAdmin() {
     await loadAdminData();
     if (parseHash().route !== 'admin') return;
   }
-  const tabs = [['games', 'Results'], ['schedule', 'Schedule'], ['rosters', 'Rosters'], ['teams', 'Teams'], ['settings', 'Settings']];
+  // Public pages may have loaded another season since; put the admin's season back.
+  if (DB.season !== admin.season && admin.saved) {
+    setData(admin.saved.league, admin.saved.players, admin.saved.games);
+    applyLeagueInfo();
+  }
+  const tabs = [['games', 'Results'], ['schedule', 'Schedule'], ['rosters', 'Rosters'], ['teams', 'Teams'], ['seasons', 'Seasons'], ['settings', 'Settings']];
   $app.innerHTML = `
     <div class="admin">
       <div class="page-head"><h1>League Admin</h1>
@@ -132,6 +175,7 @@ async function renderAdmin() {
           <button class="btn secondary" id="sign-out">Sign out</button>
         </div>
       </div>
+      ${adminSeasonPicker()}
       ${admin.loadError ? `<div class="notice"><strong>Couldn't connect to GitHub, so saving won't work right now.</strong><br>
         ${esc(admin.loadError)}<br><span class="small">If the GitHub token has expired, the site owner can enter a new one under
         <a href="#" data-goto="settings">Settings</a>.</span></div>` : ''}
@@ -141,6 +185,7 @@ async function renderAdmin() {
   document.querySelectorAll('#admin-tabs button').forEach(b => (b.onclick = () => switchTab(b.dataset.tab)));
   document.querySelectorAll('[data-goto]').forEach(a => (a.onclick = e => { e.preventDefault(); switchTab(a.dataset.goto); }));
   document.getElementById('sign-out').onclick = signOut;
+  document.getElementById('admin-season').onchange = e => switchSeason(e.target.value);
   renderCurrentTab();
 }
 
@@ -259,7 +304,8 @@ function renderFirstSetup() {
 }
 
 function renderCurrentTab() {
-  ({ games: renderGamesTab, schedule: renderScheduleTab, rosters: renderRostersTab, teams: renderTeamsTab, settings: renderSettingsTab })[admin.tab]();
+  ({ games: renderGamesTab, schedule: renderScheduleTab, rosters: renderRostersTab, teams: renderTeamsTab, seasons: renderSeasonsTab,
+    settings: renderSettingsTab })[admin.tab]();
 }
 
 function switchTab(tab) {
@@ -553,17 +599,17 @@ async function saveGamesToGitHub() {
 
   const changed = [...admin.dirtyGames].map(id => admin.games.find(g => g.id === id)).filter(Boolean);
   const n = changed.length + admin.deletedGames.size;
-  const message = n === 1 && changed.length === 1 ? `Update game: ${gameLabel(changed[0]).replace(/ \*$/, '')}` : `Update schedule/results (${n} games)`;
+  const message = n === 1 && changed.length === 1 ? `Update game: ${gameLabel(changed[0]).replace(/ \*$/, '')}` : `Update ${admin.season} schedule/results (${n} games)`;
   setBusy(true);
   try {
     // Merge into the latest copy on GitHub so two people entering different games don't overwrite each other.
-    const merged = await ghUpdateFile(cfg, 'data/games.json', remote => serializeGames(mergeGames(JSON.parse(remote))),
+    const merged = await ghUpdateFile(cfg, seasonPath(admin.season, 'games.json'), remote => serializeGames(mergeGames(JSON.parse(remote))),
       message);
     const fresh = JSON.parse(merged);
     admin.dirtyGames.clear();
     admin.deletedGames.clear();
     admin.games = clone(fresh);
-    setData(DB.league, DB.players, fresh);
+    adminSetData(DB.league, DB.players, fresh);
     renderCurrentTab();
     showMessage(`<strong>Saved!</strong> The live site updates within a few minutes.`, 'ok');
   } catch (e) {
@@ -706,18 +752,18 @@ async function savePlayersToGitHub() {
   const cfg = admin.creds;
   setBusy(true);
   try {
-    const saved = await ghUpdateFile(cfg, 'data/players.json', remote => {
+    const saved = await ghUpdateFile(cfg, seasonPath(admin.season, 'players.json'), remote => {
       if (JSON.stringify(JSON.parse(remote)) !== admin.loadedPlayersJSON &&
         !confirm('Someone else changed the roster file since you opened this page. Save anyway and replace their changes?')) {
         throw new Error('Cancelled — reload the page to get the latest roster.');
       }
       return serializePlayers(cleanPlayers());
-    }, 'Update rosters');
+    }, `Update ${admin.season} rosters`);
     const fresh = JSON.parse(saved);
     admin.players = clone(fresh);
     admin.loadedPlayersJSON = JSON.stringify(fresh);
     admin.playersDirty = false;
-    setData(DB.league, fresh, DB.games);
+    adminSetData(DB.league, fresh, DB.games);
     renderRostersTab();
     showMessage('<strong>Roster saved!</strong> The live site updates within a few minutes.', 'ok');
   } catch (e) {

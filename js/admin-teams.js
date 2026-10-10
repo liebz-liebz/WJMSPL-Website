@@ -1,4 +1,5 @@
-// League admin → Teams tab: team names, abbreviations and colours, plus the season. Saves data/league.json.
+// League admin → Teams tab (the season's teams: names, abbreviations, colours; saves teams.json)
+// and Seasons tab (start a new season, choose the current one; saves league.json).
 //
 // A team's ID links it to games and players, so it never changes once created. What people see
 // is the name and the abbreviation ("short"), which can be edited freely.
@@ -7,7 +8,6 @@ const TEAM_COLORS = ['#1d4ed8', '#047857', '#b45309', '#b91c1c', '#7c3aed', '#0e
 
 function initTeamsDraft() {
   admin.teams = clone(DB.league.teams).map(t => ({ ...t, short: t.short || t.id }));
-  admin.season = DB.league.season || '';
   admin.teamsDirty = false;
 }
 
@@ -49,7 +49,6 @@ function teamProblems() {
       else seen[f].set(k, label);
     }
   });
-  if (!String(admin.season).trim()) problems.push('Enter the season (e.g. 2027).');
   return problems;
 }
 
@@ -57,14 +56,7 @@ function renderTeamsTab() {
   const problems = teamProblems();
   document.getElementById('admin-body').innerHTML = `
     <section class="card">
-      <h2>Season</h2>
-      <div class="form-grid" style="max-width:220px">
-        <label>Season<input type="text" id="t-season" value="${esc(admin.season)}" placeholder="2027"></label>
-      </div>
-      <p class="muted small">Shown at the bottom of every page. When you paste a schedule, dates without a year use this year.</p>
-    </section>
-    <section class="card">
-      <div class="card-head"><h2>Teams</h2><button class="btn secondary" id="t-add">+ Add team</button></div>
+      <div class="card-head"><h2>${esc(admin.season)} teams</h2><button class="btn secondary" id="t-add">+ Add team</button></div>
       <div class="table-wrap"><table id="teams-table">
         <thead><tr><th class="l">Colour</th><th class="l">Name</th><th class="l">Abbreviation</th><th>Players</th><th>Games</th><th></th></tr></thead>
         <tbody>${admin.teams.map((t, i) => {
@@ -79,7 +71,8 @@ function renderTeamsTab() {
           </tr>`;
         }).join('') || '<tr><td colspan="6" class="l muted">No teams yet.</td></tr>'}</tbody>
       </table></div>
-      <p class="muted small">The abbreviation appears next to player names in stats and on the calendar.
+      <p class="muted small">Teams belong to a season, so changes here only affect ${esc(admin.season)}.
+        The abbreviation appears next to player names in stats and on the calendar.
         After adding a new team, save here before adding its games or players.
         A team can only be deleted once it has no players or games.</p>
       <div id="team-checks">${problems.length ? `<div class="notice"><ul style="margin:0;padding-left:1.2rem">${problems.map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>` : ''}</div>
@@ -93,7 +86,6 @@ function renderTeamsTab() {
     document.getElementById('team-checks').innerHTML = ps.length
       ? `<div class="notice"><ul style="margin:0;padding-left:1.2rem">${ps.map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>` : '';
   };
-  document.getElementById('t-season').oninput = e => { admin.season = e.target.value.trim(); changed(); };
   const table = document.getElementById('teams-table');
   table.addEventListener('input', e => {
     const el = e.target;
@@ -130,16 +122,8 @@ function renderTeamsTab() {
   document.getElementById('save-gh').onclick = saveTeamsToGitHub;
   document.getElementById('save-dl').onclick = () => {
     if (teamProblems().length) return showMessage('Fix the problems listed under Teams first.');
-    download('league.json', leagueWithTeams(DB.league));
+    download('teams.json', serializeTeams(assignTeamIds(admin.teams)));
   };
-}
-
-// Applies the season and teams from the Teams tab onto a league.json object, keeping its other settings.
-function leagueWithTeams(base) {
-  const league = clone(base);
-  league.season = admin.season;
-  league.teams = clone(assignTeamIds(admin.teams));
-  return JSON.stringify(league, null, 2) + '\n';
 }
 
 async function saveTeamsToGitHub() {
@@ -147,9 +131,9 @@ async function saveTeamsToGitHub() {
   if (problems.length) return showMessage(`Can't save yet: ${esc(problems[0])}`);
   setBusy(true);
   try {
-    const saved = await ghUpdateFile(admin.creds, 'data/league.json', remote => leagueWithTeams(JSON.parse(remote)), 'Update teams');
-    setData(JSON.parse(saved), DB.players, DB.games);
-    applyLeagueInfo();
+    const saved = await ghUpdateFile(admin.creds, seasonPath(admin.season, 'teams.json'),
+      () => serializeTeams(assignTeamIds(admin.teams)), `Update ${admin.season} teams`);
+    adminSetData({ ...DB.league, teams: JSON.parse(saved) }, DB.players, DB.games);
     initTeamsDraft();
     renderTeamsTab();
     showMessage('<strong>Teams saved!</strong> The live site updates within a few minutes.', 'ok');
@@ -158,4 +142,110 @@ async function saveTeamsToGitHub() {
   } finally {
     setBusy(false);
   }
+}
+
+// ---------- seasons tab ----------
+
+// Writes a change to league.json (season list / current season) and applies it here.
+async function updateLeagueFile(change, message) {
+  const saved = JSON.parse(await ghUpdateFile(admin.creds, 'data/league.json',
+    remote => JSON.stringify(change(JSON.parse(remote)), null, 2) + '\n', message));
+  DB.leagueFile = saved;
+  adminSetData({ ...saved, season: DB.league.season, teams: DB.league.teams }, DB.players, DB.games);
+  applyLeagueInfo();
+  return saved;
+}
+
+function suggestNextSeason() {
+  const years = seasonList().map(Number).filter(Number.isFinite);
+  return years.length ? String(Math.max(...years) + 1) : String(new Date().getFullYear());
+}
+
+function renderSeasonsTab() {
+  const from = admin.season;
+  document.getElementById('admin-body').innerHTML = `
+    <section class="card">
+      <h2>Seasons</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th class="l">Season</th><th class="l"></th><th></th></tr></thead>
+        <tbody>${seasonList().map(y => `<tr>
+          <td class="l"><strong>${esc(y)}</strong></td>
+          <td class="l">${y === currentSeason() ? '<span class="badge current">Current season</span>' : ''}
+            ${y === admin.season ? '<span class="muted small">Editing now</span>' : ''}</td>
+          <td>${y === admin.season ? '' : `<button class="btn secondary" data-edit="${esc(y)}">Edit</button>`}
+            ${y === currentSeason() ? '' : `<button class="btn secondary" data-current="${esc(y)}">Make current</button>`}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+      <p class="muted small">The <strong>current season</strong> is what the home page shows and what the site opens to.
+        Visitors can look at other seasons with the Season dropdown on the Schedule, Standings, Rosters, Stats and Leaders pages.
+        Use <em>Edit</em> to fix or fill in a past season's games, rosters or teams.</p>
+    </section>
+    <section class="card">
+      <h2>Start a new season</h2>
+      <form id="new-season" class="form-stack">
+        <div class="form-grid" style="max-width:220px">
+          <label>Season<input type="text" id="ns-name" value="${esc(suggestNextSeason())}" required pattern="[0-9A-Za-z-]{2,20}"
+            title="Letters, numbers and dashes, e.g. 2027"></label>
+        </div>
+        <label class="check"><input type="checkbox" id="ns-teams" checked> Copy the teams from ${esc(from)}</label>
+        <label class="check"><input type="checkbox" id="ns-players" checked> Copy the rosters from ${esc(from)}</label>
+        <label class="check"><input type="checkbox" id="ns-current" checked> Make it the current season</label>
+        <div><button class="btn" type="submit">Start season</button></div>
+      </form>
+      <p class="muted small">The new season starts with no games; add them in the Schedule tab. Copied teams and players can be
+        changed afterwards without affecting ${esc(from)}. Players keep the same ID from season to season when copied.</p>
+    </section>`;
+
+  const teamsBox = document.getElementById('ns-teams'), playersBox = document.getElementById('ns-players');
+  teamsBox.onchange = () => {
+    // Rosters point at teams, so they can only be copied along with them.
+    playersBox.disabled = !teamsBox.checked;
+    if (!teamsBox.checked) playersBox.checked = false;
+  };
+  document.querySelectorAll('[data-edit]').forEach(b => (b.onclick = () => switchSeason(b.dataset.edit)));
+  document.querySelectorAll('[data-current]').forEach(b => (b.onclick = async () => {
+    const y = b.dataset.current;
+    if (!confirm(`Make ${y} the current season? The home page will show ${y}, and the site will open to it.`)) return;
+    setBusy(true);
+    try {
+      await updateLeagueFile(l => ({ ...l, currentSeason: y }), `Make ${y} the current season`);
+      renderSeasonsTab();
+      showMessage(`<strong>${esc(y)} is now the current season.</strong> The live site updates within a few minutes.`, 'ok');
+    } catch (e) {
+      showMessage(`<strong>Couldn't save:</strong> ${esc(e.message)}`);
+    } finally {
+      setBusy(false);
+    }
+  }));
+  document.getElementById('new-season').onsubmit = async e => {
+    e.preventDefault();
+    const name = document.getElementById('ns-name').value.trim();
+    if (!/^[0-9A-Za-z-]{2,20}$/.test(name)) return showMessage('Use letters, numbers and dashes for the season name, e.g. 2027.');
+    if (seasonList().includes(name)) return showMessage(`There is already a ${esc(name)} season.`);
+    if (hasUnsaved()) return showMessage(`Save or discard your changes to ${esc(admin.season)} first.`);
+    const teams = teamsBox.checked ? DB.league.teams : [];
+    const players = playersBox.checked ? DB.players : [];
+    const makeCurrent = document.getElementById('ns-current').checked;
+    setBusy(true);
+    try {
+      const create = (file, text) => ghUpdateFile(admin.creds, seasonPath(name, file), remote => {
+        if (remote !== null) throw new Error(`data/seasons/${name}/${file} already exists.`);
+        return text;
+      }, `Start ${name} season: ${file}`);
+      // Season files first, so the season is complete by the time league.json lists it.
+      await create('teams.json', serializeTeams(teams));
+      await create('players.json', serializePlayers(players));
+      await create('games.json', '[]\n');
+      await updateLeagueFile(l => ({
+        ...l,
+        seasons: [...new Set([...(l.seasons || []), name])],
+        ...(makeCurrent ? { currentSeason: name } : {}),
+      }), `Add the ${name} season`);
+      switchSeason(name, { kind: 'ok', html: `<strong>${esc(name)} season started.</strong> You're now editing it. Add its games in the Schedule tab.` });
+    } catch (err) {
+      showMessage(`<strong>Couldn't start the season:</strong> ${esc(err.message)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 }

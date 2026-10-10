@@ -1,7 +1,10 @@
 {
   "name": "WJMSPL",
   "fullName": "Winnipeg Jewish Men's Slo Pitch League",
-  "season": "2026",
+  "currentSeason": "2026",
+  "seasons": [
+    "2026"
+  ],
   "scheduledInnings": {
     "singleGame": 9,
     "doubleheader": 6
@@ -13,43 +16,5 @@
     "owner": "liebz-liebz",
     "repo": "WJMSPL-Website",
     "branch": "main"
-  },
-  "teams": [
-    {
-      "id": "THU",
-      "name": "Swingers",
-      "color": "#4f1dd7",
-      "short": "SWG"
-    },
-    {
-      "id": "RIV",
-      "name": "Sweepers",
-      "color": "#d72404",
-      "short": "SWP"
-    },
-    {
-      "id": "HOR",
-      "name": "Menschwarmers",
-      "color": "#01c3f4",
-      "short": "MSW"
-    },
-    {
-      "id": "PIO",
-      "name": "Hammers",
-      "color": "#dedede",
-      "short": "HAM"
-    },
-    {
-      "id": "DIA",
-      "name": "Diamonds",
-      "short": "DIA",
-      "color": "#00087a"
-    },
-    {
-      "id": "MM",
-      "name": "Minyan Men",
-      "short": "MM",
-      "color": "#ffffff"
-    }
-  ]
+  }
 }
