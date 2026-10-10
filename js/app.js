@@ -56,6 +56,7 @@ function router() {
   document.querySelectorAll('.site-nav a').forEach(a =>
     a.classList.toggle('active', a.dataset.route === route || (route === 'team' && a.dataset.route === 'rosters')));
   document.getElementById('site-nav').classList.remove('open');
+  document.querySelector('.nav-toggle').setAttribute('aria-expanded', 'false');
   const fn = routes[route] || renderNotFound;
   try {
     fn(arg, params);

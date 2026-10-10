@@ -39,7 +39,16 @@ h3 { font-size: 1rem; }
 .site-nav a { color: #dbe3f0; text-decoration: none; padding: .45rem .75rem; border-radius: 6px; font-weight: 600; }
 .site-nav a:hover { background: var(--navy-2); color: #fff; }
 .site-nav a.active { background: var(--red); color: #fff; }
-.nav-toggle { display: none; margin-left: auto; background: transparent; color: #fff; border: 1px solid #ffffff55; border-radius: 6px; padding: .35rem .7rem; font: inherit; }
+/* Hamburger button (phones): three bars that turn into an X while the menu is open */
+.nav-toggle { display: none; margin-left: auto; width: 44px; height: 44px; padding: 0; background: transparent; border: 0; border-radius: 6px; cursor: pointer; position: relative; }
+.nav-toggle:hover, .nav-toggle:focus-visible { background: var(--navy-2); }
+.nav-toggle span { position: absolute; left: 11px; width: 22px; height: 2px; border-radius: 2px; background: #fff; transition: transform .2s, opacity .2s; }
+.nav-toggle span:nth-child(1) { top: 15px; }
+.nav-toggle span:nth-child(2) { top: 21px; }
+.nav-toggle span:nth-child(3) { top: 27px; }
+.nav-toggle[aria-expanded="true"] span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.nav-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+.nav-toggle[aria-expanded="true"] span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 @media (max-width: 720px) {
   .nav-toggle { display: block; }
   .site-nav { display: none; width: 100%; flex-direction: column; padding-bottom: .6rem; }
