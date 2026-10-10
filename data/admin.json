@@ -1,7 +1,19 @@
 {
-  "version": 1,
-  "iterations": 600000,
-  "salt": "rStYvfMxQGy2juJUVkUh9Q==",
-  "iv": "Rn+EFf/YBjk1x/K/",
-  "data": "lJFiruXTTspAxHrRia3U04+0uRz70550q/xol02gUJVcdWYGvu0kGCI8a66dVN5gn5qBHrFXlJFq7ZwlJd/ghBm7J4X7gGfkWMIV7xmGZ9fy0SGBy24LmaJSHQGFfNEqMENY+NDC8uQuwysWjf847wiaMATVUD6K98KlJfRcsyhjgAuNlTQbWl5EjESIYQ0fiQTTIscsqNl4X/InFzJbE4m+5PCtN7PY0qKTXArF0YoSlBcN+YMN"
+  "version": 2,
+  "iv": "XB2ZxeljnbWmnezx",
+  "data": "vb5fqaoeMzRgOPen1tmY5ZeNYececJQwUsdOFnqYxZNql0DqsfFltoc+t6IwPRRmfNelxOjJOnnEbEqeYmYcOuZD/DKfBOY7ci+u8+dRtTrGmwDjgHP43LcicD7/kd47YXGCYlVXAksn5J+R6SwxTgI8gLQEoDL/W+Qz/gDfHpDyWpVWGS5Bgu+qMnmR9ddReib+HOK+tKr6WFqFHT7U0w91cFC+c/kC1KwdXh1AWX4BAoPA6j0u",
+  "keys": {
+    "admin": {
+      "salt": "CjnrwWUgiVPN8MD/mMiR8A==",
+      "iterations": 600000,
+      "iv": "0umcLjw4vSvuGuPE",
+      "data": "TfkxdCPaH9BFIdLIDGJ6G9RKQV2XIUQdCfq9ONSEOKEJ/gVdO8qX66t5YkWqX/92"
+    },
+    "secret": {
+      "salt": "P8TfvDkaORNaXRd/M1GzvQ==",
+      "iterations": 600000,
+      "iv": "FjiuaN73yrJ3i71N",
+      "data": "N9OFq/FXoLTRDCv0lJyXMEhjyvQcb9V9r6t7Cd31e+ZZVtX1ojX1O8f8UjaIir2Z"
+    }
+  }
 }
