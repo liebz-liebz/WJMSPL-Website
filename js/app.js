@@ -241,20 +241,10 @@ function renderHome() {
 
 function renderSchedule(_, params) {
   const team = params.get('team') || '';
+  const view = params.get('view') === 'calendar' ? 'calendar' : 'list';
   const show = params.get('show') || 'all';
   const today = todayISO();
   let games = sortedGames().filter(g => !team || g.home === team || g.away === team);
-  if (show === 'results') games = games.filter(isFinal).reverse();
-  if (show === 'upcoming') games = games.filter(g => !isFinal(g) && (g.date || '') >= today);
-
-  const byDate = new Map();
-  for (const g of games) {
-    const k = g.date || 'TBD';
-    if (!byDate.has(k)) byDate.set(k, []);
-    byDate.get(k).push(g);
-  }
-  const days = [...byDate].map(([d, gs]) => `<div class="day"><h3>${esc(fmtDate(d, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}</h3>
-    ${gs.map(g => gameRow(g)).join('')}</div>`).join('');
 
   // Team record summary when filtered
   let summary = '';
@@ -263,21 +253,116 @@ function renderSchedule(_, params) {
     if (row) summary = `<p class="muted">${esc(teamName(team))}: ${row.w}-${row.l}${row.t ? '-' + row.t : ''} · RS ${row.rs} · RA ${row.ra}</p>`;
   }
 
+  let content;
+  if (view === 'calendar') {
+    content = calendarView(games, params.get('month'));
+  } else {
+    if (show === 'results') games = games.filter(isFinal).reverse();
+    if (show === 'upcoming') games = games.filter(g => !isFinal(g) && (g.date || '') >= today);
+    content = gameList(games) || '<div class="empty">No games to show.</div>';
+  }
+
   $app.innerHTML = `
     <div class="page-head"><h1>Schedule &amp; Results</h1>
       <div class="controls">
         <select id="f-team">${teamOptions(team)}</select>
-        <div class="seg" id="f-show">
-          ${['all', 'results', 'upcoming'].map(s => `<button data-v="${s}" class="${s === show ? 'active' : ''}">${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}
+        <div class="seg" id="f-view">
+          ${['list', 'calendar'].map(v => `<button data-v="${v}" class="${v === view ? 'active' : ''}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}
         </div>
+        ${view === 'list' ? `<div class="seg" id="f-show">
+          ${['all', 'results', 'upcoming'].map(s => `<button data-v="${s}" class="${s === show ? 'active' : ''}">${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}
+        </div>` : ''}
       </div>
     </div>
     ${summary}
-    ${days || '<div class="empty">No games to show.</div>'}`;
+    ${content}`;
 
-  const update = (k, v) => { const p = new URLSearchParams(params); v && v !== 'all' ? p.set(k, v) : p.delete(k); setParams(p); renderSchedule(_, p); };
-  document.getElementById('f-team').onchange = e => update('team', e.target.value);
-  document.querySelectorAll('#f-show button').forEach(b => (b.onclick = () => update('show', b.dataset.v)));
+  const update = changes => {
+    const p = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(changes)) v && v !== 'all' && v !== 'list' ? p.set(k, v) : p.delete(k);
+    setParams(p);
+    renderSchedule(_, p);
+  };
+  document.getElementById('f-team').onchange = e => update({ team: e.target.value });
+  document.querySelectorAll('#f-view button').forEach(b => (b.onclick = () => update({ view: b.dataset.v, month: '' })));
+  document.querySelectorAll('#f-show button').forEach(b => (b.onclick = () => update({ show: b.dataset.v })));
+  document.querySelectorAll('[data-month]').forEach(b => (b.onclick = () => update({ month: b.dataset.month })));
+}
+
+function gameList(games) {
+  const byDate = new Map();
+  for (const g of games) {
+    const k = g.date || 'TBD';
+    if (!byDate.has(k)) byDate.set(k, []);
+    byDate.get(k).push(g);
+  }
+  return [...byDate].map(([d, gs]) => `<div class="day"><h3>${esc(fmtDate(d, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}</h3>
+    ${gs.map(g => gameRow(g)).join('')}</div>`).join('');
+}
+
+// Month to open the calendar on: this month if it has games, else the next month with games, else the last one.
+function defaultMonth(games) {
+  const now = todayISO().slice(0, 7);
+  const months = [...new Set(games.map(g => (g.date || '').slice(0, 7)).filter(Boolean))].sort();
+  if (!months.length || months.includes(now)) return now;
+  return months.find(m => m > now) || months[months.length - 1];
+}
+function shiftMonth(ym, delta) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function calendarView(games, monthParam) {
+  const month = /^\d{4}-\d{2}$/.test(monthParam || '') ? monthParam : defaultMonth(games);
+  const [y, m] = month.split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const today = todayISO();
+  const byDate = new Map();
+  for (const g of games) {
+    if (!(g.date || '').startsWith(month)) continue;
+    if (!byDate.has(g.date)) byDate.set(g.date, []);
+    byDate.get(g.date).push(g);
+  }
+
+  const chip = g => {
+    const st = g.status || 'scheduled';
+    const final = isFinal(g);
+    const as = num(g.awayScore), hs = num(g.homeScore);
+    const side = (id, score, win) => `<span class="${final && win ? 'cal-win' : ''}"><span class="team-dot" style="background:${esc(teamColor(id))}"></span>${esc(id)}${final ? ` ${score}` : ''}</span>`;
+    const meta = final ? `${finalLabel(g)}${g.mercy ? ' · Mercy' : ''}` : st === 'scheduled' ? (fmtTime(g.time) || 'TBD') : st[0].toUpperCase() + st.slice(1);
+    return `<a class="cal-game ${st}" href="#/game/${encodeURIComponent(g.id)}" title="${esc(`${teamName(g.away)} @ ${teamName(g.home)}`)}">
+      <span class="cal-meta">${esc(meta)}</span>${side(g.away, as, as > hs)} @ ${side(g.home, hs, hs > as)}</a>`;
+  };
+
+  const cells = [];
+  for (let i = 0; i < first.getDay(); i++) cells.push('<div class="cal-day other"></div>');
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso = `${month}-${String(d).padStart(2, '0')}`;
+    const gs = byDate.get(iso) || [];
+    cells.push(`<div class="cal-day ${iso === today ? 'today' : ''} ${gs.length ? 'has-games' : ''}">
+      <span class="cal-num">${d}</span>
+      ${gs.map(chip).join('')}
+      ${gs.length ? `<span class="cal-dots">${gs.map(() => '<i></i>').join('')}</span>` : ''}
+    </div>`);
+  }
+  while (cells.length % 7) cells.push('<div class="cal-day other"></div>');
+
+  const monthGames = [...byDate.values()].flat();
+  return `<section class="card">
+    <div class="cal-nav">
+      <button class="btn secondary" data-month="${shiftMonth(month, -1)}" aria-label="Previous month">‹</button>
+      <h2>${esc(first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))}</h2>
+      <button class="btn secondary" data-month="${shiftMonth(month, 1)}" aria-label="Next month">›</button>
+    </div>
+    <div class="cal">
+      ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(w => `<div class="cal-head">${w}</div>`).join('')}
+      ${cells.join('')}
+    </div>
+    ${monthGames.length ? '' : '<p class="muted" style="text-align:center;margin-bottom:0">No games this month.</p>'}
+  </section>
+  ${monthGames.length ? `<div class="cal-list">${gameList(monthGames)}</div>` : ''}`;
 }
 
 function renderStandings() {
@@ -304,9 +389,9 @@ function renderRosters(teamArg) {
         <a href="#/schedule?team=${encodeURIComponent(t.id)}">Schedule</a> ·
         <a href="#/stats?team=${encodeURIComponent(t.id)}">Stats</a></span></div>
       <div class="table-wrap"><table>
-        <thead><tr><th>#</th><th class="l">Name</th><th class="l">Pos</th><th>B/T</th></tr></thead>
+        <thead><tr><th>#</th><th class="l">Name</th></tr></thead>
         <tbody>${roster.map(p => `<tr><td>${esc(p.number ?? '')}</td><td class="l">${playerLink(p.id)}</td>
-          <td class="l">${esc(p.pos || '')}</td><td>${esc(p.bats || '-')}/${esc(p.throws || '-')}</td></tr>`).join('') ||
+          </tr>`).join('') ||
           '<tr><td colspan="4" class="l muted">No players listed.</td></tr>'}</tbody>
       </table></div></section>`;
   };
@@ -425,7 +510,7 @@ function renderPlayer(id) {
     <section class="card">
       <h1>${p && p.number !== undefined && p.number !== '' ? `<span class="muted">#${esc(p.number)}</span> ` : ''}${esc(name)}</h1>
       ${p ? `<p class="muted" style="margin:0">${teamLabel(p.team)} · <a href="#/team/${encodeURIComponent(p.team)}">Roster</a>
-        ${p.pos ? ' · ' + esc(p.pos) : ''}${p.bats || p.throws ? ` · Bats ${esc(p.bats || '-')} / Throws ${esc(p.throws || '-')}` : ''}</p>` : ''}
+</p>` : ''}
     </section>
     ${bat ? `<section class="card"><h2>Batting</h2>${statCols(BAT_COLS, bat)}</section>` : '<div class="empty">No stats recorded yet.</div>'}
     ${batLog.length ? `<section class="card"><h2>Game Log</h2><div class="table-wrap"><table>

@@ -62,12 +62,16 @@ function initAdminData(games, players) {
   admin.games = clone(games);
   admin.players = clone(players);
   admin.loadedPlayersJSON = JSON.stringify(players);
+  admin.currentGameId = defaultGameId();
+  admin.ready = true;
+}
+
+// The most recent game that still needs a result, else the latest game played, else the first game.
+function defaultGameId() {
   const today = todayISO();
   const sorted = sortedAdminGames();
-  // Default to the most recent game that still needs a result, else the latest game played.
   const pending = sorted.filter(g => g.status !== 'final' && g.status !== 'cancelled' && (g.date || '') <= today);
-  admin.currentGameId = (pending[pending.length - 1] || sorted.filter(isFinal).pop() || sorted[0] || {}).id || null;
-  admin.ready = true;
+  return (pending[pending.length - 1] || sorted.filter(isFinal).pop() || sorted[0] || {}).id || null;
 }
 
 // Load the latest data straight from GitHub so admins never edit a stale copy of the site.
@@ -107,7 +111,7 @@ async function renderAdmin() {
     await loadAdminData();
     if (parseHash().route !== 'admin') return;
   }
-  const tabs = [['games', 'Games & Results'], ['rosters', 'Rosters'], ['settings', 'Settings']];
+  const tabs = [['games', 'Results'], ['schedule', 'Schedule'], ['rosters', 'Rosters'], ['settings', 'Settings']];
   $app.innerHTML = `
     <div class="admin">
       <div class="page-head"><h1>League Admin</h1>
@@ -126,7 +130,7 @@ async function renderAdmin() {
   document.querySelectorAll('#admin-tabs button').forEach(b => (b.onclick = () => switchTab(b.dataset.tab)));
   document.querySelectorAll('[data-goto]').forEach(a => (a.onclick = e => { e.preventDefault(); switchTab(a.dataset.goto); }));
   document.getElementById('sign-out').onclick = signOut;
-  ({ games: renderGamesTab, rosters: renderRostersTab, settings: renderSettingsTab })[admin.tab]();
+  renderCurrentTab();
 }
 
 async function renderSignIn() {
@@ -229,6 +233,10 @@ function renderFirstSetup() {
   };
 }
 
+function renderCurrentTab() {
+  ({ games: renderGamesTab, schedule: renderScheduleTab, rosters: renderRostersTab, settings: renderSettingsTab })[admin.tab]();
+}
+
 function switchTab(tab) {
   if (admin.tab === 'games') collectGameForm();
   admin.tab = tab;
@@ -273,6 +281,7 @@ function gameLabel(g) {
 }
 
 function renderGamesTab() {
+  if (!currentGame()) admin.currentGameId = defaultGameId();
   const games = sortedAdminGames();
   const g = currentGame();
   const body = document.getElementById('admin-body');
@@ -282,10 +291,10 @@ function renderGamesTab() {
         <label class="field" style="flex:1;min-width:min(100%,320px)">Choose a game
           <select id="game-pick">${games.map(x => `<option value="${esc(x.id)}" ${x.id === admin.currentGameId ? 'selected' : ''}>${esc(gameLabel(x))}</option>`).join('')}</select>
         </label>
-        <button class="btn secondary" id="game-new" style="align-self:flex-end">+ New game</button>
       </div>
+      <p class="muted small" style="margin:.5rem 0 0">To add, reschedule or delete games, use the <a href="#" data-goto="schedule">Schedule</a> tab.</p>
     </div>
-    ${g ? gameForm(g) : '<div class="empty">No games yet. Click “+ New game” to add one to the schedule.</div>'}
+    ${g ? gameForm(g) : '<div class="empty">No games on the schedule yet. Add them in the <a href="#" data-goto="schedule">Schedule</a> tab.</div>'}
     ${saveBar('games')}`;
 
   document.getElementById('game-pick').onchange = e => {
@@ -293,17 +302,7 @@ function renderGamesTab() {
     admin.currentGameId = e.target.value;
     renderGamesTab();
   };
-  document.getElementById('game-new').onclick = () => {
-    collectGameForm();
-    const used = new Set(admin.games.map(x => x.id));
-    let n = admin.games.length + 1, id;
-    do { id = `g${String(n++).padStart(3, '0')}`; } while (used.has(id));
-    const teams = DB.league.teams;
-    admin.games.push({ id, date: todayISO(), time: '', location: '', away: teams[0]?.id, home: teams[1]?.id, status: 'scheduled' });
-    admin.dirtyGames.add(id);
-    admin.currentGameId = id;
-    renderGamesTab();
-  };
+  document.querySelectorAll('#admin-body [data-goto]').forEach(a => (a.onclick = e => { e.preventDefault(); switchTab(a.dataset.goto); }));
   document.getElementById('save-gh').onclick = saveGamesToGitHub;
   document.getElementById('save-dl').onclick = () => {
     collectGameForm();
@@ -317,19 +316,7 @@ function renderGamesTab() {
     collectGameForm();
     updateChecks();
   });
-  form.addEventListener('change', e => {
-    collectGameForm();
-    if (e.target.id === 'g-away' || e.target.id === 'g-home' || e.target.id === 'g-date') renderGamesTab();
-    else updateChecks();
-  });
-  document.getElementById('game-delete').onclick = () => {
-    if (!confirm(`Delete this game from the schedule?\n\n${gameLabel(g)}`)) return;
-    admin.games = admin.games.filter(x => x.id !== g.id);
-    admin.dirtyGames.delete(g.id);
-    if (DB.games.some(x => x.id === g.id)) admin.deletedGames.add(g.id);
-    admin.currentGameId = (sortedAdminGames()[0] || {}).id || null;
-    renderGamesTab();
-  };
+  form.addEventListener('change', () => { collectGameForm(); updateChecks(); });
   document.getElementById('box-clear').onclick = () => {
     if (!confirm('Clear all batting stats for this game?')) return;
     form.querySelectorAll('input[data-kind]').forEach(i => (i.value = ''));
@@ -380,22 +367,12 @@ function battingInputs(g, team) {
 }
 
 function gameForm(g) {
-  const teamSel = (id, val) => `<select id="${id}">${DB.league.teams.map(t =>
-    `<option value="${esc(t.id)}" ${t.id === val ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>`;
+  const dh = findDoubleheaders(admin.games).get(g.id);
   return `<form id="game-form" onsubmit="return false">
     <section class="card">
-      <div class="card-head"><h2>Game details</h2><button type="button" class="btn danger" id="game-delete">Delete game</button></div>
-      <div class="form-grid">
-        <label>Date<input type="date" id="g-date" value="${esc(g.date || '')}"></label>
-        <label>Time<input type="time" id="g-time" value="${esc(g.time || '')}"></label>
-        <label>Location<input type="text" id="g-location" value="${esc(g.location || '')}"></label>
-        <label>Away team${teamSel('g-away', g.away)}</label>
-        <label>Home team${teamSel('g-home', g.home)}</label>
-        <label>Game type<select id="g-type">
-          <option value="regular" ${(g.type || 'regular') === 'regular' ? 'selected' : ''}>Regular season</option>
-          <option value="playoff" ${g.type === 'playoff' ? 'selected' : ''}>Playoff (not in standings)</option>
-        </select></label>
-      </div>
+      <h2 style="margin:0">${esc(teamName(g.away))} @ ${esc(teamName(g.home))}</h2>
+      <p class="muted" style="margin:.25rem 0 0">${esc([fmtDate(g.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
+        fmtTime(g.time), dh ? `Doubleheader, game ${dh.game}` : '', g.type === 'playoff' ? 'Playoff' : '', g.location].filter(Boolean).join(' · '))}</p>
     </section>
     <section class="card">
       <h2>Result</h2>
@@ -454,8 +431,9 @@ function collectGameForm() {
   const known = ['id', 'date', 'time', 'location', 'away', 'home', 'type', 'innings', 'status', 'awayScore', 'homeScore',
     'inningsPlayed', 'mercy', 'notes', 'batting'];
   const extra = Object.fromEntries(Object.entries(g).filter(([k]) => !known.includes(k)));
-  const next = { id: g.id, date: val('g-date'), time: val('g-time'), location: val('g-location'), away: val('g-away'), home: val('g-home') };
-  if (val('g-type') !== 'regular') next.type = val('g-type');
+  // Date, teams, location and type are edited on the Schedule tab.
+  const next = { id: g.id, date: g.date || '', time: g.time || '', location: g.location || '', away: g.away, home: g.home };
+  if (g.type && g.type !== 'regular') next.type = g.type;
   // Only store a length when it differs from the league default for this kind of game.
   const inn = document.getElementById('g-innings');
   if (inn.dataset.explicit && num(inn.value) && num(inn.value) !== defaultInningsAdmin({ ...g, ...next })) next.innings = num(inn.value);
@@ -539,18 +517,19 @@ async function saveGamesToGitHub() {
   const cfg = admin.creds;
 
   const changed = [...admin.dirtyGames].map(id => admin.games.find(g => g.id === id)).filter(Boolean);
-  const summary = changed.length === 1 ? gameLabel(changed[0]).replace(/ \*$/, '') : `${changed.length + admin.deletedGames.size} games`;
+  const n = changed.length + admin.deletedGames.size;
+  const message = n === 1 && changed.length === 1 ? `Update game: ${gameLabel(changed[0]).replace(/ \*$/, '')}` : `Update schedule/results (${n} games)`;
   setBusy(true);
   try {
     // Merge into the latest copy on GitHub so two people entering different games don't overwrite each other.
     const merged = await ghUpdateFile(cfg, 'data/games.json', remote => serializeGames(mergeGames(JSON.parse(remote))),
-      `Update results: ${summary}`);
+      message);
     const fresh = JSON.parse(merged);
     admin.dirtyGames.clear();
     admin.deletedGames.clear();
     admin.games = clone(fresh);
     setData(DB.league, DB.players, fresh);
-    renderGamesTab();
+    renderCurrentTab();
     showMessage(`<strong>Saved!</strong> The live site updates within a few minutes.`, 'ok');
   } catch (e) {
     showMessage(`<strong>Save failed:</strong> ${esc(e.message)}`);
@@ -577,27 +556,35 @@ function renderRostersTab() {
     .sort((a, b) => (a.p.team || '').localeCompare(b.p.team || '') || num(a.p.number) - num(b.p.number));
   const teamSel = (i, val) => `<select data-i="${i}" data-f="team">${DB.league.teams.map(t =>
     `<option value="${esc(t.id)}" ${t.id === val ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>`;
-  const hand = (i, f, val, opts) => `<select data-i="${i}" data-f="${f}">${opts.map(o => `<option ${o === (val || '') ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
 
   document.getElementById('admin-body').innerHTML = `
     <div class="card">
       <div class="controls" style="justify-content:space-between">
         <select id="r-team">${teamOptions(team)}</select>
-        <button class="btn secondary" id="r-add">+ Add player</button>
+        <div class="controls">
+          <button class="btn secondary" id="r-add">+ Add player</button>
+          ${admin.players.length ? '<button class="btn danger" id="r-clear">Remove all players</button>' : ''}
+        </div>
       </div>
+      <details style="margin-top:1rem" ${admin.playerBulkText ? 'open' : ''}><summary>Add many players at once</summary>
+        <p class="small">One player per line: <strong>name, team, jersey number</strong> (number optional), or paste those columns from a spreadsheet.
+          Teams can be names or IDs (${DB.league.teams.map(t => esc(t.id)).join(', ')}).
+          ${team ? `Lines without a team go to the ${esc(teamName(team))}.` : ''}</p>
+        <textarea id="r-bulk" rows="6" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:.85rem"
+          placeholder="Sam Cohen, ${esc(DB.league.teams[0]?.name || 'Team')}, 12">${esc(admin.playerBulkText || '')}</textarea>
+        <div class="controls" style="margin-top:.5rem"><button class="btn secondary" id="r-bulk-add">Add players</button></div>
+        <div id="r-bulk-msg"></div>
+      </details>
     </div>
     <div class="card"><div class="table-wrap"><table id="roster-table">
-      <thead><tr><th>#</th><th class="l">Name</th><th class="l">Team</th><th class="l">Pos</th><th>Bats</th><th>Throws</th><th class="l">ID</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th class="l">Name</th><th class="l">Team</th><th class="l">ID</th><th></th></tr></thead>
       <tbody>${list.map(({ p, i }) => `<tr>
         <td><input class="stat-input" type="number" min="0" data-i="${i}" data-f="number" value="${esc(p.number ?? '')}"></td>
         <td class="l"><input type="text" data-i="${i}" data-f="name" value="${esc(p.name || '')}" placeholder="First Last"></td>
         <td class="l">${teamSel(i, p.team)}</td>
-        <td class="l"><input type="text" data-i="${i}" data-f="pos" value="${esc(p.pos || '')}" style="width:4.5rem;min-width:0"></td>
-        <td>${hand(i, 'bats', p.bats, ['', 'R', 'L', 'S'])}</td>
-        <td>${hand(i, 'throws', p.throws, ['', 'R', 'L'])}</td>
         <td class="l muted small">${esc(p.id)}</td>
         <td><button class="btn danger" data-del="${i}" title="Remove player">✕</button></td>
-      </tr>`).join('') || '<tr><td colspan="8" class="l muted">No players.</td></tr>'}</tbody>
+      </tr>`).join('') || '<tr><td colspan="5" class="l muted">No players.</td></tr>'}</tbody>
     </table></div>
     <p class="muted small">Moving a player to another team keeps their past stats with the team they played for.
       The ID links a player to their stats and never changes once created.</p></div>
@@ -607,9 +594,43 @@ function renderRostersTab() {
   document.getElementById('r-add').onclick = () => {
     const name = prompt('New player name (First Last):');
     if (!name || !name.trim()) return;
-    admin.players.push({ id: slugify(name.trim()), name: name.trim(), number: '', team: team || DB.league.teams[0].id, pos: '', bats: '', throws: '' });
+    admin.players.push({ id: slugify(name.trim()), name: name.trim(), number: '', team: team || DB.league.teams[0].id });
     admin.playersDirty = true;
     renderRostersTab();
+  };
+  const bulk = document.getElementById('r-bulk');
+  bulk.oninput = () => (admin.playerBulkText = bulk.value);
+  document.getElementById('r-bulk-add').onclick = () => {
+    const errors = [], added = [];
+    bulk.value.split(/\r?\n/).forEach((raw, i) => {
+      const line = raw.trim();
+      if (!line) return;
+      const [name = '', teamText = '', number = ''] = (line.includes('\t') ? line.split('\t') : line.split(',')).map(x => x.trim());
+      if (!name || /^name$/i.test(name)) return;
+      const t = teamText ? matchTeam(teamText) : (team ? { id: team } : { error: 'no team given' });
+      if (t.error) return errors.push(`Line ${i + 1} (${name}): ${t.error}`);
+      if (number && !/^\d+$/.test(number)) return errors.push(`Line ${i + 1} (${name}): jersey number “${number}” isn't a number`);
+      const p = { id: slugify(name), name, number: number ? num(number) : '', team: t.id };
+      admin.players.push(p);
+      added.push(p);
+    });
+    if (added.length) {
+      admin.playersDirty = true;
+      admin.playerBulkText = errors.length ? bulk.value : '';
+      renderRostersTab();
+      showMessage(`Added ${added.length} player${added.length === 1 ? '' : 's'}.${errors.length ? ` ${errors.length} line${errors.length === 1 ? '' : 's'} skipped:<br>${errors.map(esc).join('<br>')}` : ''}
+        Click <strong>Save to website</strong> when you're done.`, errors.length ? '' : 'info');
+    } else {
+      document.getElementById('r-bulk-msg').innerHTML = `<p class="warn small">${errors.length ? errors.map(esc).join('<br>') : 'Nothing to add.'}</p>`;
+    }
+  };
+  const clearAll = document.getElementById('r-clear');
+  if (clearAll) clearAll.onclick = () => {
+    if (!confirm(`Remove all ${admin.players.length} players from every roster?\n\nUse this to clear out the rosters before a new season. Nothing changes on the website until you click Save.`)) return;
+    admin.players = [];
+    admin.playersDirty = true;
+    renderRostersTab();
+    showMessage('All players removed. Click <strong>Save to website</strong> to publish, or reload the page to undo.', 'info');
   };
   const table = document.getElementById('roster-table');
   table.addEventListener('change', e => {
@@ -637,8 +658,9 @@ function renderRostersTab() {
 
 function cleanPlayers() {
   return admin.players.map(p => {
-    const o = { id: p.id, name: p.name, number: p.number, team: p.team, pos: p.pos, bats: p.bats, throws: p.throws };
-    for (const k of Object.keys(o)) if (o[k] === '' || o[k] === undefined) delete o[k];
+    // Position and handedness aren't tracked; drop them if an older file still has them.
+    const o = { id: p.id, name: p.name, number: p.number, team: p.team };
+    if (o.number === '' || o.number === undefined) delete o.number;
     return Object.assign(o, Object.fromEntries(Object.entries(p).filter(([k]) => !(k in o) && !['number', 'pos', 'bats', 'throws'].includes(k))));
   });
 }

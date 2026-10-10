@@ -46,7 +46,7 @@ h3 { font-size: 1rem; }
   .site-nav.open { display: flex; }
 }
 
-main { flex: 1; padding-top: 1.5rem; padding-bottom: 2rem; }
+main.wrap { flex: 1; padding-top: 2rem; padding-bottom: 2rem; }
 .site-footer { background: var(--navy); color: #b8c3d6; font-size: .85rem; padding: 1rem 0; }
 .site-footer .wrap { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .site-footer a { color: #b8c3d6; }
@@ -117,6 +117,35 @@ td.num-col { color: var(--muted); }
 .badge.mercy { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
 .result-w { color: var(--win); font-weight: 700; }
 .result-l { color: var(--loss); font-weight: 700; }
+
+/* Calendar */
+.cal-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
+.cal-nav h2 { margin: 0; }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+.cal-head { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #3b4452; background: #eef1f5;
+  padding: .35rem .4rem; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.cal-day { min-height: 104px; padding: .3rem; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); min-width: 0; }
+.cal-day.other { background: #f8f9fb; }
+.cal-num { display: inline-block; min-width: 1.5rem; text-align: center; font-size: .8rem; font-weight: 600; color: var(--muted); border-radius: 999px; }
+.cal-day.today .cal-num { background: var(--red); color: #fff; }
+.cal-game { display: block; margin-top: .25rem; padding: .2rem .35rem; border-radius: 4px; background: #f1f5fb; border-left: 3px solid var(--navy-2);
+  color: var(--text); text-decoration: none; font-size: .75rem; line-height: 1.35; overflow: hidden; }
+.cal-game:hover { background: #e3eaf5; color: var(--text); }
+.cal-game.final { border-left-color: var(--muted); }
+.cal-game.postponed, .cal-game.cancelled { border-left-color: var(--loss); opacity: .75; }
+.cal-game .team-dot { width: 7px; height: 7px; margin-right: .2rem; }
+.cal-meta { display: block; font-size: .68rem; color: var(--muted); font-weight: 600; }
+.cal-win { font-weight: 700; }
+.cal-dots { display: none; }
+.cal-list { display: none; margin-top: 1rem; }
+@media (max-width: 720px) {
+  .cal-day { min-height: 48px; padding: .2rem; text-align: center; }
+  .cal-head { padding: .3rem 0; text-align: center; font-size: .65rem; }
+  .cal-game { display: none; }
+  .cal-dots { display: flex; justify-content: center; gap: 3px; margin-top: .2rem; }
+  .cal-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--navy-2); }
+  .cal-list { display: block; }
+}
 
 /* Leaders */
 .leader-list { list-style: none; margin: 0; padding: 0; }

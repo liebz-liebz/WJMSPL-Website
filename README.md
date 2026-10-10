@@ -8,7 +8,7 @@ standings, player stats and leaders automatically from the game results:
 | File | What's in it |
 | --- | --- |
 | `data/league.json` | League name, season, teams (name, short ID, color), settings |
-| `data/players.json` | Every player: name, number, team, position |
+| `data/players.json` | Every player: name, jersey number, team |
 | `data/games.json` | The schedule, final scores, and (optionally) each game's box score |
 | `data/admin.json` | Created by the admin setup: the GitHub connection, locked with the admin password |
 
@@ -22,7 +22,7 @@ standings, player stats and leaders automatically from the game results:
 Anyone with the admin password can do this. No GitHub account needed.
 
 1. Go to the website and click **League admin** at the bottom of any page, then enter the admin password.
-2. Under **Games & Results**, pick the game from the dropdown.
+2. Under **Results**, pick the game from the dropdown.
 3. Set **Status** to *Final* and enter both teams' runs.
 4. If the game was shortened by the mercy rule, tick **Mercy rule** and enter **Innings played** (e.g. 5).
    The result then shows as e.g. "Final/5 · Mercy".
@@ -58,9 +58,27 @@ the GitHub history, so any bad edit can be undone. The token can only change thi
 
 ## Other common edits
 
-- **Add, edit or move players:** League admin → **Rosters**. Moving a player to a new team keeps their past stats with the old team.
-- **Add, reschedule, postpone or delete a game:** League admin → **Games & Results** (use **+ New game** to add one).
-  A *Playoff* game shows on the schedule but doesn't count in standings or season stats.
+- **Add, edit or move players:** League admin → **Rosters**. Add one at a time, or open *Add many players at once* and paste
+  one player per line (`name, team, jersey number`). Moving a player to a new team keeps their past stats with the old team.
+- **Add, reschedule or delete games:** League admin → **Schedule**. Add one game with the form, or paste many at once
+  (see below). Every game is listed underneath and can be edited in place. A *Playoff* game shows on the schedule but
+  doesn't count in standings or season stats.
+- **Postpone or cancel a game:** League admin → **Results**, pick the game, and change its status.
+
+### Adding a whole schedule at once
+
+League admin → **Schedule** → *Add many games at once*. Paste one game per line, in this order:
+
+```
+date, time, away team, home team, location
+2027-05-12, 6:30 PM, Thunder, Riverhawks, Memorial Park Field 1
+5/12/2027, 8:00 PM, THU, RIV, Memorial Park Field 1
+May 19, 6:30 PM, Hornets, Pioneers
+```
+
+Copying those five columns straight out of a spreadsheet works too. Teams can be names or IDs; dates with no year use the
+season year from `league.json`; times without AM/PM between 1 and 7 are read as PM. Click **Check** to see how every line
+was read (and which ones couldn't be), then **Add** and **Save to website**.
 - **Teams, league name, season:** edit `data/league.json` directly on GitHub (click the file → pencil icon).
   Each team needs a short `id` (like `THU`) that the other files use to refer to it.
 
@@ -74,9 +92,8 @@ the GitHub history, so any bad edit can be undone. The token can only change thi
 ## Starting the real season
 
 1. In `data/league.json`, set the league name, season and your teams.
-2. In `data/games.json`, replace everything with `[]`, then add your schedule using **+ New game** on the admin page
-   (or edit the file directly; each game needs `id`, `date`, `time`, `location`, `away`, `home` and `"status": "scheduled"`).
-3. Replace `data/players.json` with `[]` and add your players under League admin → **Rosters**.
+2. League admin → **Schedule**: click **Delete all games** to clear the sample games, paste your schedule, then **Save to website**.
+3. League admin → **Rosters**: click **Remove all players**, paste your rosters under *Add many players at once*, then **Save to website**.
 
 ## Hosting (GitHub Pages, free)
 
@@ -97,7 +114,8 @@ won't work because browsers block loading the data files that way.) Saving from 
 index.html        page shell + navigation
 css/style.css     all styling (colors are at the top)
 js/data.js        loads data files; computes standings, stats, leaders
-js/app.js         public pages: home, schedule, standings, rosters, stats, leaders, box scores, player pages
-js/admin.js       League admin page (password sign-in, results entry, rosters)
+js/app.js         public pages: home, schedule (list + calendar), standings, rosters, stats, leaders, box scores, player pages
+js/admin.js       League admin page (password sign-in, results entry, rosters, settings)
+js/admin-schedule.js  League admin → Schedule tab (add, paste and edit games)
 data/*.json       the league's data
 ```
