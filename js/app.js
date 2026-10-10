@@ -370,7 +370,7 @@ function boxBattingTable(g, team) {
   const lines = (g.batting || []).filter(l => lineTeam(l) === team);
   const tot = emptyBat();
   lines.forEach(l => addBatLine(tot, l));
-  const cols = ['ab', 'r', 'h', '2b', '3b', 'hr', 'bb', 'so'];
+  const cols = ['ab', 'r', 'h', '2b', '3b', 'hr', 'bb', 'so', 'sf'];
   return `<div class="table-wrap"><table>
     <thead><tr><th class="l">${esc(teamName(team))} Batting</th>${cols.map(c => `<th>${c.toUpperCase()}</th>`).join('')}</tr></thead>
     <tbody>${lines.map(l => `<tr><td class="l">${playerLink(l.player)}</td>${cols.map(c => `<td>${num(l[c])}</td>`).join('')}</tr>`).join('') ||
@@ -429,10 +429,10 @@ function renderPlayer(id) {
     </section>
     ${bat ? `<section class="card"><h2>Batting</h2>${statCols(BAT_COLS, bat)}</section>` : '<div class="empty">No stats recorded yet.</div>'}
     ${batLog.length ? `<section class="card"><h2>Game Log</h2><div class="table-wrap"><table>
-      <thead><tr><th class="l">Date</th><th class="l">Opp</th><th class="l">Result</th>${['AB', 'R', 'H', '2B', '3B', 'HR', 'BB', 'SO'].map(h => `<th>${h}</th>`).join('')}</tr></thead>
+      <thead><tr><th class="l">Date</th><th class="l">Opp</th><th class="l">Result</th>${['AB', 'R', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'SF'].map(h => `<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${batLog.slice().reverse().map(e => `<tr><td class="l">${esc(fmtDate(e.game.date, { month: 'short', day: 'numeric' }))}</td>
         <td class="l">${esc(opp(e))}</td><td class="l">${res(e)}</td>
-        ${['ab', 'r', 'h', '2b', '3b', 'hr', 'bb', 'so'].map(k => `<td>${num(e.bat[k])}</td>`).join('')}</tr>`).join('')}</tbody>
+        ${['ab', 'r', 'h', '2b', '3b', 'hr', 'bb', 'so', 'sf'].map(k => `<td>${num(e.bat[k])}</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div></section>` : ''}`;
 }
 
