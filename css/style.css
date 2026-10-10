@@ -34,7 +34,8 @@ h3 { font-size: 1rem; }
 .brand:hover { color: #fff; }
 .brand-full { font-weight: 500; font-size: .85rem; letter-spacing: 0; color: #b8c3d6; border-left: 1px solid #ffffff44; padding-left: .6rem; }
 @media (max-width: 960px) { .brand-full { display: none; } }
-.brand-ball { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 2px solid var(--red); box-shadow: inset 4px 0 0 -2px var(--red), inset -4px 0 0 -2px var(--red); }
+/* Neon yellow softball logo (inline SVG in index.html) */
+.brand-ball { width: 26px; height: 26px; flex: none; filter: drop-shadow(0 0 4px #dfff1f66); }
 .site-nav { display: flex; gap: .25rem; margin-left: auto; }
 .site-nav a { color: #dbe3f0; text-decoration: none; padding: .45rem .75rem; border-radius: 6px; font-weight: 600; }
 .site-nav a:hover { background: var(--navy-2); color: #fff; }
