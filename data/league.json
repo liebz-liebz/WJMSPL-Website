@@ -7,7 +7,7 @@
     "doubleheader": 6
   },
   "leaderMinimums": {
-    "plateAppearancesPerTeamGame": 2.0
+    "plateAppearancesPerTeamGame": 2
   },
   "github": {
     "owner": "liebz-liebz",
@@ -17,23 +17,39 @@
   "teams": [
     {
       "id": "THU",
-      "name": "Thunder",
-      "color": "#1d4ed8"
+      "name": "Swingers",
+      "color": "#4f1dd7",
+      "short": "SWG"
     },
     {
       "id": "RIV",
-      "name": "Riverhawks",
-      "color": "#047857"
+      "name": "Sweepers",
+      "color": "#d72404",
+      "short": "SWP"
     },
     {
       "id": "HOR",
-      "name": "Hornets",
-      "color": "#b45309"
+      "name": "Menschwarmers",
+      "color": "#01c3f4",
+      "short": "MSW"
     },
     {
       "id": "PIO",
-      "name": "Pioneers",
-      "color": "#b91c1c"
+      "name": "Hammers",
+      "color": "#dedede",
+      "short": "HAM"
+    },
+    {
+      "id": "DIA",
+      "name": "Diamonds",
+      "short": "DIA",
+      "color": "#00087a"
+    },
+    {
+      "id": "MM",
+      "name": "Minyan Men",
+      "short": "MM",
+      "color": "#ffffff"
     }
   ]
 }
