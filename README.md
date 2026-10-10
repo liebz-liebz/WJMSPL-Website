@@ -7,7 +7,7 @@ standings, player stats and leaders automatically from the game results:
 
 | File | What's in it |
 | --- | --- |
-| `data/league.json` | League name, season, teams (name, short ID, color), settings |
+| `data/league.json` | League name, season, teams (name, abbreviation, colour), settings |
 | `data/players.json` | Every player: name, jersey number, team |
 | `data/games.json` | The schedule, final scores, and (optionally) each game's box score |
 | `data/admin.json` | Created by the admin setup: the GitHub connection, locked with the admin password |
@@ -76,11 +76,12 @@ date, time, away team, home team
 May 19, 6:30 PM, Hornets, Pioneers
 ```
 
-Copying those four columns straight out of a spreadsheet works too. Teams can be names or IDs; dates with no year use the
-season year from `league.json`; times without AM/PM between 1 and 7 are read as PM. Click **Check** to see how every line
+Copying those four columns straight out of a spreadsheet works too. Teams can be names or abbreviations; dates with no year use the
+season year (set on the Teams tab); times without AM/PM between 1 and 7 are read as PM. Click **Check** to see how every line
 was read (and which ones couldn't be), then **Add** and **Save to website**.
-- **Teams, league name, season:** edit `data/league.json` directly on GitHub (click the file → pencil icon).
-  Each team needs a short `id` (like `THU`) that the other files use to refer to it.
+- **Teams and season:** League admin → **Teams**. Edit names, abbreviations (shown next to players in stats and on
+  the calendar) and colours, add teams, and set the season year. A team can be deleted once it has no players or games.
+  Renaming a team keeps all its games and stats. The league's name lives in `data/league.json` (edit on GitHub).
 
 ### Settings in `league.json`
 
@@ -91,7 +92,8 @@ was read (and which ones couldn't be), then **Add** and **Save to website**.
 
 ## Starting the real season
 
-1. In `data/league.json`, set the league name, season and your teams.
+1. League admin → **Teams**: set the season, rename the sample teams to yours (or add yours), and **Save to website**.
+   Delete leftover sample teams after clearing the schedule and rosters (steps 2–3).
 2. League admin → **Schedule**: click **Delete all games** to clear the sample games, paste your schedule, then **Save to website**.
 3. League admin → **Rosters**: click **Remove all players**, paste your rosters under *Add many players at once*, then **Save to website**.
 

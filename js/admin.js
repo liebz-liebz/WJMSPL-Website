@@ -53,6 +53,7 @@ function signOut() {
   admin.dirtyGames.clear();
   admin.deletedGames.clear();
   admin.playersDirty = false;
+  admin.teamsDirty = false;
   admin.message = null;
   admin.tab = 'games';
   renderAdmin();
@@ -62,6 +63,7 @@ function initAdminData(games, players) {
   admin.games = clone(games);
   admin.players = clone(players);
   admin.loadedPlayersJSON = JSON.stringify(players);
+  initTeamsDraft();
   admin.currentGameId = defaultGameId();
   admin.ready = true;
 }
@@ -78,9 +80,10 @@ function defaultGameId() {
 async function loadAdminData() {
   admin.loadError = null;
   try {
-    const [games, players] = await Promise.all(['data/games.json', 'data/players.json']
+    const [games, players, league] = await Promise.all(['data/games.json', 'data/players.json', 'data/league.json']
       .map(async p => JSON.parse((await ghReadFile(admin.creds, p)).text)));
-    setData(DB.league, players, games);
+    setData(league, players, games);
+    applyLeagueInfo();
     initAdminData(games, players);
   } catch (e) {
     admin.loadError = e.message;
@@ -93,7 +96,7 @@ window.addEventListener('beforeunload', e => {
 });
 
 function hasUnsaved() {
-  return admin.dirtyGames.size > 0 || admin.deletedGames.size > 0 || admin.playersDirty;
+  return admin.dirtyGames.size > 0 || admin.deletedGames.size > 0 || admin.playersDirty || admin.teamsDirty;
 }
 function sortedAdminGames() {
   return [...admin.games].sort((a, b) =>
@@ -111,7 +114,7 @@ async function renderAdmin() {
     await loadAdminData();
     if (parseHash().route !== 'admin') return;
   }
-  const tabs = [['games', 'Results'], ['schedule', 'Schedule'], ['rosters', 'Rosters'], ['settings', 'Settings']];
+  const tabs = [['games', 'Results'], ['schedule', 'Schedule'], ['rosters', 'Rosters'], ['teams', 'Teams'], ['settings', 'Settings']];
   $app.innerHTML = `
     <div class="admin">
       <div class="page-head"><h1>League Admin</h1>
@@ -234,7 +237,7 @@ function renderFirstSetup() {
 }
 
 function renderCurrentTab() {
-  ({ games: renderGamesTab, schedule: renderScheduleTab, rosters: renderRostersTab, settings: renderSettingsTab })[admin.tab]();
+  ({ games: renderGamesTab, schedule: renderScheduleTab, rosters: renderRostersTab, teams: renderTeamsTab, settings: renderSettingsTab })[admin.tab]();
 }
 
 function switchTab(tab) {
@@ -253,22 +256,32 @@ function showMessage(html, kind = '') {
   }
 }
 
+// kind: 'games' (games.json), 'players' (players.json) or 'teams' (league.json)
+function dirtyCount(kind) {
+  if (kind === 'games') return admin.dirtyGames.size + admin.deletedGames.size;
+  return (kind === 'players' ? admin.playersDirty : admin.teamsDirty) ? 1 : 0;
+}
+function dirtyText(kind) {
+  const n = dirtyCount(kind);
+  if (!n) return 'No unsaved changes';
+  return `Unsaved: ${{ games: `${n} game${n === 1 ? '' : 's'} changed`, players: 'Roster changed', teams: 'Teams changed' }[kind]}`;
+}
 function saveBar(kind) {
-  const n = kind === 'games' ? admin.dirtyGames.size + admin.deletedGames.size : (admin.playersDirty ? 1 : 0);
-  const label = kind === 'games' ? `${n} game${n === 1 ? '' : 's'} changed` : (n ? 'Roster changed' : '');
+  const n = dirtyCount(kind);
+  const file = { games: 'games', players: 'players', teams: 'league' }[kind];
   return `<div class="save-bar">
     <button class="btn" id="save-gh" ${n ? '' : 'disabled'}>Save to website</button>
-    <button class="btn secondary" id="save-dl">Download ${kind === 'games' ? 'games' : 'players'}.json</button>
-    <span class="${n ? 'warn' : 'muted'}" id="dirty-label">${n ? `Unsaved: ${label}` : 'No unsaved changes'}</span>
+    <button class="btn secondary" id="save-dl">Download ${file}.json</button>
+    <span class="${n ? 'warn' : 'muted'}" id="dirty-label">${dirtyText(kind)}</span>
   </div>`;
 }
 function refreshDirtyLabel(kind) {
   const el = document.getElementById('dirty-label');
   const btn = document.getElementById('save-gh');
   if (!el) return;
-  const n = kind === 'games' ? admin.dirtyGames.size + admin.deletedGames.size : (admin.playersDirty ? 1 : 0);
+  const n = dirtyCount(kind);
   el.className = n ? 'warn' : 'muted';
-  el.textContent = n ? `Unsaved: ${kind === 'games' ? `${n} game${n === 1 ? '' : 's'} changed` : 'Roster changed'}` : 'No unsaved changes';
+  el.textContent = dirtyText(kind);
   btn.disabled = !n;
 }
 
@@ -568,7 +581,7 @@ function renderRostersTab() {
       </div>
       <details style="margin-top:1rem" ${admin.playerBulkText ? 'open' : ''}><summary>Add many players at once</summary>
         <p class="small">One player per line: <strong>name, team, jersey number</strong> (number optional), or paste those columns from a spreadsheet.
-          Teams can be names or IDs (${DB.league.teams.map(t => esc(t.id)).join(', ')}).
+          Teams can be names or abbreviations (${DB.league.teams.map(t => esc(teamAbbr(t.id))).join(', ')}).
           ${team ? `Lines without a team go to the ${esc(teamName(team))}.` : ''}</p>
         <textarea id="r-bulk" rows="6" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:.85rem"
           placeholder="Sam Cohen, ${esc(DB.league.teams[0]?.name || 'Team')}, 12">${esc(admin.playerBulkText || '')}</textarea>

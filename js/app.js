@@ -6,11 +6,13 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 function teamName(id) { return (DB.teamsById[id] || { name: id }).name; }
 function teamColor(id) { return (DB.teamsById[id] || {}).color || '#888'; }
+// Short display name (e.g. THU). Falls back to the team's ID, which never changes once games reference it.
+function teamAbbr(id) { return (DB.teamsById[id] || {}).short || id; }
 function teamLabel(id) {
   return `<span class="team-dot" style="background:${esc(teamColor(id))}"></span>${esc(teamName(id))}`;
 }
 function teamTag(id) {
-  return `<span class="team-tag" style="background:${esc(teamColor(id))}">${esc(id)}</span>`;
+  return `<span class="team-tag" style="background:${esc(teamColor(id))}">${esc(teamAbbr(id))}</span>`;
 }
 function playerName(id) { return (DB.playersById[id] || { name: id }).name; }
 function playerLink(id) { return `<a href="#/player/${encodeURIComponent(id)}">${esc(playerName(id))}</a>`; }
@@ -330,7 +332,7 @@ function calendarView(games, monthParam) {
     const st = g.status || 'scheduled';
     const final = isFinal(g);
     const as = num(g.awayScore), hs = num(g.homeScore);
-    const side = (id, score, win) => `<span class="${final && win ? 'cal-win' : ''}"><span class="team-dot" style="background:${esc(teamColor(id))}"></span>${esc(id)}${final ? ` ${score}` : ''}</span>`;
+    const side = (id, score, win) => `<span class="${final && win ? 'cal-win' : ''}"><span class="team-dot" style="background:${esc(teamColor(id))}"></span>${esc(teamAbbr(id))}${final ? ` ${score}` : ''}</span>`;
     const meta = final ? `${finalLabel(g)}${g.mercy ? ' · Mercy' : ''}` : st === 'scheduled' ? (fmtTime(g.time) || 'TBD') : st[0].toUpperCase() + st.slice(1);
     return `<a class="cal-game ${st}" href="#/game/${encodeURIComponent(g.id)}" title="${esc(`${teamName(g.away)} @ ${teamName(g.home)}`)}">
       <span class="cal-meta">${esc(meta)}</span>${side(g.away, as, as > hs)} @ ${side(g.home, hs, hs > as)}</a>`;
@@ -496,7 +498,7 @@ function renderPlayer(id) {
     return `<div class="table-wrap"><table><thead><tr>${use.map(c => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
       <tbody><tr>${use.map(c => `<td>${c.display ? c.display(row) : esc(c.value(row))}</td>`).join('')}</tr></tbody></table></div>`;
   };
-  const opp = e => (e.game.home === e.team ? `vs ${e.game.away}` : `@ ${e.game.home}`);
+  const opp = e => (e.game.home === e.team ? `vs ${teamAbbr(e.game.away)}` : `@ ${teamAbbr(e.game.home)}`);
   const res = e => {
     const us = e.game.home === e.team ? num(e.game.homeScore) : num(e.game.awayScore);
     const them = e.game.home === e.team ? num(e.game.awayScore) : num(e.game.homeScore);
@@ -529,6 +531,14 @@ document.querySelector('.nav-toggle').addEventListener('click', e => {
   e.currentTarget.setAttribute('aria-expanded', nav.classList.contains('open'));
 });
 
+// League name and season in the header, footer and browser tab.
+function applyLeagueInfo() {
+  document.title = DB.league.fullName ? `${DB.league.name} · ${DB.league.fullName}` : DB.league.name;
+  document.getElementById('brand-name').textContent = DB.league.name;
+  document.getElementById('brand-full').textContent = DB.league.fullName || '';
+  document.getElementById('footer-text').textContent = `${DB.league.fullName || DB.league.name} · ${DB.league.season} Season`;
+}
+
 (async function init() {
   try {
     await loadData();
@@ -537,10 +547,7 @@ document.querySelector('.nav-toggle').addEventListener('click', e => {
       <br><span class="small">If you just edited a data file, check it for a typo (a missing comma or quote is the usual culprit).</span></div>`;
     return;
   }
-  document.title = DB.league.fullName ? `${DB.league.name} · ${DB.league.fullName}` : DB.league.name;
-  document.getElementById('brand-name').textContent = DB.league.name;
-  document.getElementById('brand-full').textContent = DB.league.fullName || '';
-  document.getElementById('footer-text').textContent = `${DB.league.fullName || DB.league.name} · ${DB.league.season} Season`;
+  applyLeagueInfo();
   window.addEventListener('hashchange', router);
   router();
 })();

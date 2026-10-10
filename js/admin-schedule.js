@@ -76,7 +76,7 @@ function matchTeam(s) {
   const q = s.trim().toLowerCase().replace(/^the /, '');
   if (!q) return { error: 'missing team' };
   const teams = DB.league.teams;
-  const exact = teams.find(t => t.id.toLowerCase() === q || t.name.toLowerCase().replace(/^the /, '') === q);
+  const exact = teams.find(t => t.id.toLowerCase() === q || (t.short || '').toLowerCase() === q || t.name.toLowerCase().replace(/^the /, '') === q);
   if (exact) return { id: exact.id };
   const partial = teams.filter(t => t.name.toLowerCase().includes(q));
   if (partial.length === 1) return { id: partial[0].id };
@@ -158,7 +158,7 @@ function renderScheduleTab() {
       <h2>Add many games at once</h2>
       <p class="small">Paste the season schedule, one game per line: <strong>date, time, away team, home team</strong>.
         You can copy rows straight from a spreadsheet with the columns in that order.
-        Teams can be written as names or short IDs (${DB.league.teams.map(t => esc(t.id)).join(', ')}).
+        Teams can be written as names or abbreviations (${DB.league.teams.map(t => esc(teamAbbr(t.id))).join(', ')}).
         Dates can look like <code>2027-05-12</code>, <code>5/12/2027</code> (month first) or <code>May 12</code>; a missing year means ${seasonYear()}.
         Doubleheaders are just two lines with the same teams on the same day.</p>
       <textarea id="bulk" rows="8" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:.85rem"
