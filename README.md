@@ -31,6 +31,7 @@ Anyone with the admin password can do this. No GitHub account needed.
 6. Click **Save to website**. The site updates within a few minutes.
 
 Standings only need the final score. The box score is what feeds player stats and league leaders.
+Only batting stats are tracked; team runs allowed show in the standings (RA).
 
 ### Game length
 
@@ -66,8 +67,7 @@ the GitHub history, so any bad edit can be undone. The token can only change thi
 ### Settings in `league.json`
 
 - `scheduledInnings`: default game length for single games (`singleGame`) and doubleheaders (`doubleheader`).
-- `inningsPerGame`: the innings ERA and K/9 are scaled to (ERA = earned runs per this many innings).
-- `leaderMinimums`: how much a player must play to qualify for the rate-stat leaderboards (AVG, OBP, ERA, WHIP).
+- `leaderMinimums`: how much a player must play to qualify for the rate-stat leaderboards (AVG, OBP, SLG, OPS).
   `plateAppearancesPerTeamGame: 2` means 2 plate appearances for every game their team has a box score for.
 - `github`: the repository the admin page saves to (pre-fills the setup form).
 

@@ -119,26 +119,6 @@ const BAT_COLS = [
   { key: 'slg', label: 'SLG', value: r => r.slg, display: r => fmt.avg(r.slg) },
   { key: 'ops', label: 'OPS', value: r => r.ops, display: r => fmt.avg(r.ops) },
 ];
-const PIT_COLS = [
-  { key: 'name', label: 'Player', left: true, value: r => playerName(r.player), display: r => playerLink(r.player), desc: false },
-  { key: 'team', label: 'Team', left: true, value: r => r.team || '', display: r => teamTag(r.team), desc: false },
-  { key: 'w', label: 'W', value: r => r.w },
-  { key: 'l', label: 'L', value: r => r.l },
-  { key: 'era', label: 'ERA', value: r => r.era, display: r => fmt.era(r.era), desc: false },
-  { key: 'g', label: 'G', value: r => r.g },
-  { key: 'gs', label: 'GS', value: r => r.gs },
-  { key: 'sv', label: 'SV', value: r => r.sv },
-  { key: 'ip', label: 'IP', value: r => r.outs, display: r => r.ip },
-  { key: 'h', label: 'H', value: r => r.h },
-  { key: 'r', label: 'R', value: r => r.r },
-  { key: 'er', label: 'ER', value: r => r.er },
-  { key: 'bb', label: 'BB', value: r => r.bb },
-  { key: 'so', label: 'SO', value: r => r.so },
-  { key: 'hr', label: 'HR', value: r => r.hr },
-  { key: 'whip', label: 'WHIP', value: r => r.whip, display: r => fmt.era(r.whip), desc: false },
-  { key: 'k9', label: 'K/9', value: r => r.k9, display: r => r.k9.toFixed(1) },
-];
-
 // ---------- shared pieces ----------
 
 // Small print under a game: doubleheader / length, location, notes.
@@ -195,34 +175,24 @@ function standingsTable(rows, { compact = false } = {}) {
 
 // ---------- leaders ----------
 
-const LEADER_CATS = {
-  batting: [
-    { key: 'avg', label: 'Batting Average', value: s => s.avg, show: s => fmt.avg(s.avg), qualified: true },
-    { key: 'hr', label: 'Home Runs', value: s => s.hr },
-    { key: 'rbi', label: 'Runs Batted In', value: s => s.rbi },
-    { key: 'h', label: 'Hits', value: s => s.h },
-    { key: 'r', label: 'Runs', value: s => s.r },
-    { key: 'sb', label: 'Stolen Bases', value: s => s.sb },
-    { key: 'obp', label: 'On-Base Pct', value: s => s.obp, show: s => fmt.avg(s.obp), qualified: true },
-    { key: 'slg', label: 'Slugging Pct', value: s => s.slg, show: s => fmt.avg(s.slg), qualified: true },
-    { key: 'ops', label: 'OPS', value: s => s.ops, show: s => fmt.avg(s.ops), qualified: true },
-    { key: '2b', label: 'Doubles', value: s => s['2b'] },
-    { key: 'bb', label: 'Walks', value: s => s.bb },
-    { key: 'tb', label: 'Total Bases', value: s => s.tb },
-  ],
-  pitching: [
-    { key: 'era', label: 'ERA', value: s => s.era, show: s => fmt.era(s.era), asc: true, qualified: true },
-    { key: 'w', label: 'Wins', value: s => s.w },
-    { key: 'so', label: 'Strikeouts', value: s => s.so },
-    { key: 'sv', label: 'Saves', value: s => s.sv },
-    { key: 'whip', label: 'WHIP', value: s => s.whip, show: s => fmt.era(s.whip), asc: true, qualified: true },
-    { key: 'ip', label: 'Innings Pitched', value: s => s.outs, show: s => s.ip },
-  ],
-};
+const LEADER_CATS = [
+  { key: 'avg', label: 'Batting Average', value: s => s.avg, show: s => fmt.avg(s.avg), qualified: true },
+  { key: 'hr', label: 'Home Runs', value: s => s.hr },
+  { key: 'rbi', label: 'Runs Batted In', value: s => s.rbi },
+  { key: 'h', label: 'Hits', value: s => s.h },
+  { key: 'r', label: 'Runs', value: s => s.r },
+  { key: 'sb', label: 'Stolen Bases', value: s => s.sb },
+  { key: 'obp', label: 'On-Base Pct', value: s => s.obp, show: s => fmt.avg(s.obp), qualified: true },
+  { key: 'slg', label: 'Slugging Pct', value: s => s.slg, show: s => fmt.avg(s.slg), qualified: true },
+  { key: 'ops', label: 'OPS', value: s => s.ops, show: s => fmt.avg(s.ops), qualified: true },
+  { key: '2b', label: 'Doubles', value: s => s['2b'] },
+  { key: 'bb', label: 'Walks', value: s => s.bb },
+  { key: 'tb', label: 'Total Bases', value: s => s.tb },
+];
 
 function topN(list, cat, n, isQualified) {
-  const pool = (cat.qualified ? list.filter(isQualified) : list).filter(s => cat.asc || cat.value(s) > 0);
-  const sorted = [...pool].sort((a, b) => (cat.asc ? cat.value(a) - cat.value(b) : cat.value(b) - cat.value(a)) ||
+  const pool = (cat.qualified ? list.filter(isQualified) : list).filter(s => cat.value(s) > 0);
+  const sorted = [...pool].sort((a, b) => cat.value(b) - cat.value(a) ||
     playerName(a.player).localeCompare(playerName(b.player)));
   return sorted.slice(0, n);
 }
@@ -244,8 +214,7 @@ function renderHome() {
   const upcoming = games.filter(g => !isFinal(g) && (g.status || 'scheduled') === 'scheduled' && (g.date || '') >= today).slice(0, 4);
   const stats = computePlayerStats();
   const q = qualifiers();
-  const homeCats = [LEADER_CATS.batting[0], LEADER_CATS.batting[1], LEADER_CATS.batting[2],
-    LEADER_CATS.pitching[0], LEADER_CATS.pitching[1], LEADER_CATS.pitching[2]];
+  const homeCats = ['avg', 'hr', 'rbi', 'h', 'r', 'ops'].map(k => LEADER_CATS.find(c => c.key === k));
 
   $app.innerHTML = `
     <section class="hero">
@@ -268,8 +237,7 @@ function renderHome() {
     </section>
     <div class="card-head"><h2>League Leaders</h2><a href="#/leaders" class="small">All leaders</a></div>
     <div class="grid grid-3">
-      ${homeCats.map(c => leaderCard(LEADER_CATS.batting.includes(c) ? stats.batting : stats.pitching, c, 3,
-        LEADER_CATS.batting.includes(c) ? q.batter : q.pitcher)).join('')}
+      ${homeCats.map(c => leaderCard(stats.batting, c, 3, q.batter)).join('')}
     </div>`;
 }
 
@@ -353,34 +321,26 @@ function renderRosters(teamArg) {
 }
 
 function renderStats(_, params) {
-  const view = params.get('view') === 'pitching' ? 'pitching' : 'batting';
   const team = params.get('team') || '';
   const qualOnly = params.get('qual') === '1';
-  const cols = view === 'batting' ? BAT_COLS : PIT_COLS;
-  const defaultSort = view === 'batting' ? 'avg' : 'era';
-  const sortKey = cols.some(c => c.key === params.get('sort')) ? params.get('sort') : defaultSort;
+  const cols = BAT_COLS;
+  const sortKey = cols.some(c => c.key === params.get('sort')) ? params.get('sort') : 'avg';
   const sortDesc = params.has('dir') ? params.get('dir') !== 'asc' : (cols.find(c => c.key === sortKey).desc !== false);
 
   const stats = computePlayerStats({ team: team || null });
   const q = qualifiers();
-  let rows = stats[view];
-  if (qualOnly) rows = rows.filter(view === 'batting' ? q.batter : q.pitcher);
+  let rows = stats.batting;
+  if (qualOnly) rows = rows.filter(q.batter);
 
   $app.innerHTML = `
     <div class="page-head"><h1>Stats</h1>
       <div class="controls">
-        <div class="seg" id="f-view">
-          <button data-v="batting" class="${view === 'batting' ? 'active' : ''}">Batting</button>
-          <button data-v="pitching" class="${view === 'pitching' ? 'active' : ''}">Pitching</button>
-        </div>
         <select id="f-team">${teamOptions(team)}</select>
         <label class="check"><input type="checkbox" id="f-qual" ${qualOnly ? 'checked' : ''}> Qualified only</label>
       </div>
     </div>
     <div class="card">${sortableTable('stats-table', cols, rows, { sortKey, sortDesc, rank: true })}</div>
-    <p class="muted small">Click a column header to sort. Qualified = at least
-      ${view === 'batting' ? `${q.paPerGame} plate appearances` : `${q.ipPerGame} inning${q.ipPerGame === 1 ? '' : 's'} pitched`}
-      per team game.${view === 'pitching' ? ` ERA is based on ${DB.league.inningsPerGame || 9}-inning games.` : ''}</p>`;
+    <p class="muted small">Click a column header to sort. Qualified = at least ${q.paPerGame} plate appearances per team game.</p>`;
 
   const update = changes => {
     const p = new URLSearchParams(params);
@@ -388,7 +348,6 @@ function renderStats(_, params) {
     setParams(p);
     renderStats(_, p);
   };
-  document.querySelectorAll('#f-view button').forEach(b => (b.onclick = () => update({ view: b.dataset.v === 'batting' ? '' : b.dataset.v, sort: '', dir: '' })));
   document.getElementById('f-team').onchange = e => update({ team: e.target.value });
   document.getElementById('f-qual').onchange = e => update({ qual: e.target.checked ? '1' : '' });
   bindSort('stats-table', cols, { sortKey, sortDesc }, (key, desc) => update({ sort: key, dir: desc ? 'desc' : 'asc' }));
@@ -401,12 +360,8 @@ function renderLeaders(_, params) {
   $app.innerHTML = `
     <div class="page-head"><h1>League Leaders</h1>
       <div class="controls"><select id="f-team">${teamOptions(team)}</select></div></div>
-    <h2>Batting</h2>
-    <div class="grid grid-3">${LEADER_CATS.batting.map(c => leaderCard(stats.batting, c, 5, q.batter)).join('')}</div>
-    <h2 style="margin-top:1.5rem">Pitching</h2>
-    <div class="grid grid-3">${LEADER_CATS.pitching.map(c => leaderCard(stats.pitching, c, 5, q.pitcher)).join('')}</div>
-    <p class="muted small" style="margin-top:1rem">Rate stats (AVG, OBP, SLG, OPS, ERA, WHIP) require ${q.paPerGame} plate appearances
-      or ${q.ipPerGame} inning${q.ipPerGame === 1 ? '' : 's'} pitched per team game.</p>`;
+    <div class="grid grid-3">${LEADER_CATS.map(c => leaderCard(stats.batting, c, 5, q.batter)).join('')}</div>
+    <p class="muted small" style="margin-top:1rem">Rate stats (AVG, OBP, SLG, OPS) require ${q.paPerGame} plate appearances per team game.</p>`;
   document.getElementById('f-team').onchange = e => {
     const p = new URLSearchParams(); if (e.target.value) p.set('team', e.target.value);
     setParams(p); renderLeaders(_, p);
@@ -425,19 +380,6 @@ function boxBattingTable(g, team) {
     <tfoot><tr><td class="l">Totals</td>${cols.map(c => `<td>${tot[c]}</td>`).join('')}</tr></tfoot>
   </table></div>`;
 }
-function boxPitchingTable(g, team) {
-  const lines = (g.pitching || []).filter(l => lineTeam(l) === team);
-  const cols = ['h', 'r', 'er', 'bb', 'so', 'hr'];
-  return `<div class="table-wrap"><table>
-    <thead><tr><th class="l">${esc(teamName(team))} Pitching</th><th>IP</th>${cols.map(c => `<th>${c.toUpperCase()}</th>`).join('')}</tr></thead>
-    <tbody>${lines.map(l => {
-      const d = (l.dec || '').toUpperCase();
-      return `<tr><td class="l">${playerLink(l.player)}${d ? ` <span class="muted">(${esc(d === 'SV' ? 'S' : d)})</span>` : ''}</td>
-        <td>${esc(outsToIP(ipToOuts(l.ip)))}</td>${cols.map(c => `<td>${num(l[c])}</td>`).join('')}</tr>`;
-    }).join('') || `<tr><td class="l muted" colspan="${cols.length + 2}">No pitching stats entered.</td></tr>`}</tbody>
-  </table></div>`;
-}
-
 function renderGame(id) {
   const g = DB.games.find(x => x.id === id);
   if (!g) return renderNotFound();
@@ -455,12 +397,8 @@ function renderGame(id) {
       </div>
     </section>
     ${hasBoxScore(g) ? `
-      <div class="grid grid-2">
-        <section class="card">${boxBattingTable(g, g.away)}</section>
-        <section class="card">${boxBattingTable(g, g.home)}</section>
-        <section class="card">${boxPitchingTable(g, g.away)}</section>
-        <section class="card">${boxPitchingTable(g, g.home)}</section>
-      </div>` : `<div class="empty">No box score has been entered for this game.</div>`}`;
+      <section class="card">${boxBattingTable(g, g.away)}</section>
+      <section class="card">${boxBattingTable(g, g.home)}</section>` : `<div class="empty">No box score has been entered for this game.</div>`}`;
 }
 
 function renderPlayer(id) {
@@ -469,7 +407,6 @@ function renderPlayer(id) {
   if (!p && !log.length) return renderNotFound();
   const all = computePlayerStats();
   const bat = all.batting.find(s => s.player === id);
-  const pit = all.pitching.find(s => s.player === id);
   const name = p ? p.name : id;
   const statCols = (cols, row) => {
     const use = cols.filter(c => c.key !== 'name' && c.key !== 'team');
@@ -485,7 +422,6 @@ function renderPlayer(id) {
     return `<a href="#/game/${encodeURIComponent(e.game.id)}" class="${r === 'W' ? 'result-w' : r === 'L' ? 'result-l' : ''}">${r} ${us}-${them}</a>${extra}`;
   };
   const batLog = log.filter(e => e.bat);
-  const pitLog = log.filter(e => e.pit);
 
   $app.innerHTML = `
     <section class="card">
@@ -493,20 +429,12 @@ function renderPlayer(id) {
       ${p ? `<p class="muted" style="margin:0">${teamLabel(p.team)} · <a href="#/team/${encodeURIComponent(p.team)}">Roster</a>
         ${p.pos ? ' · ' + esc(p.pos) : ''}${p.bats || p.throws ? ` · Bats ${esc(p.bats || '-')} / Throws ${esc(p.throws || '-')}` : ''}</p>` : ''}
     </section>
-    ${bat ? `<section class="card"><h2>Batting</h2>${statCols(BAT_COLS, bat)}</section>` : ''}
-    ${pit ? `<section class="card"><h2>Pitching</h2>${statCols(PIT_COLS, pit)}</section>` : ''}
-    ${!bat && !pit ? '<div class="empty">No stats recorded yet.</div>' : ''}
-    ${batLog.length ? `<section class="card"><h2>Batting Game Log</h2><div class="table-wrap"><table>
+    ${bat ? `<section class="card"><h2>Batting</h2>${statCols(BAT_COLS, bat)}</section>` : '<div class="empty">No stats recorded yet.</div>'}
+    ${batLog.length ? `<section class="card"><h2>Game Log</h2><div class="table-wrap"><table>
       <thead><tr><th class="l">Date</th><th class="l">Opp</th><th class="l">Result</th>${['AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'SO', 'SB'].map(h => `<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${batLog.slice().reverse().map(e => `<tr><td class="l">${esc(fmtDate(e.game.date, { month: 'short', day: 'numeric' }))}</td>
         <td class="l">${esc(opp(e))}</td><td class="l">${res(e)}</td>
         ${['ab', 'r', 'h', '2b', '3b', 'hr', 'rbi', 'bb', 'so', 'sb'].map(k => `<td>${num(e.bat[k])}</td>`).join('')}</tr>`).join('')}</tbody>
-      </table></div></section>` : ''}
-    ${pitLog.length ? `<section class="card"><h2>Pitching Game Log</h2><div class="table-wrap"><table>
-      <thead><tr><th class="l">Date</th><th class="l">Opp</th><th class="l">Result</th><th>Dec</th><th>IP</th>${['H', 'R', 'ER', 'BB', 'SO', 'HR'].map(h => `<th>${h}</th>`).join('')}</tr></thead>
-      <tbody>${pitLog.slice().reverse().map(e => `<tr><td class="l">${esc(fmtDate(e.game.date, { month: 'short', day: 'numeric' }))}</td>
-        <td class="l">${esc(opp(e))}</td><td class="l">${res(e)}</td><td>${esc(e.pit.dec || '')}</td><td>${esc(outsToIP(ipToOuts(e.pit.ip)))}</td>
-        ${['h', 'r', 'er', 'bb', 'so', 'hr'].map(k => `<td>${num(e.pit[k])}</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div></section>` : ''}`;
 }
 

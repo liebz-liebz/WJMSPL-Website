@@ -7,7 +7,6 @@
 
 const SESSION_KEY = 'wjmspl-admin-session';
 const PBKDF2_ITERATIONS = 600000;
-const PIT_INPUT_KEYS = ['ip', 'h', 'r', 'er', 'bb', 'so', 'hr'];
 
 const admin = {
   creds: null, // { token, owner, repo, branch } once unlocked
@@ -332,7 +331,7 @@ function renderGamesTab() {
     renderGamesTab();
   };
   document.getElementById('box-clear').onclick = () => {
-    if (!confirm('Clear all batting and pitching stats for this game?')) return;
+    if (!confirm('Clear all batting stats for this game?')) return;
     form.querySelectorAll('input[data-kind]').forEach(i => (i.value = ''));
     form.querySelectorAll('select[data-kind]').forEach(s => (s.value = ''));
     collectGameForm();
@@ -380,32 +379,6 @@ function battingInputs(g, team) {
   </table></div>`;
 }
 
-function pitchingInputs(g, team) {
-  const lines = g.pitching || [];
-  const ids = rosterFor(team, lines);
-  // Pitchers listed on the roster as P come first among those without stats.
-  const withStats = ids.filter(id => lines.some(l => l.player === id && lineTeam(l) === team));
-  const rest = ids.filter(id => !withStats.includes(id));
-  const isP = id => /(^|\W)P(\W|$)|RHP|LHP/.test((admin.players.find(p => p.id === id) || {}).pos || '');
-  const order = withStats.concat(rest.filter(isP), rest.filter(id => !isP(id)));
-  const starter = (lines.find(l => lineTeam(l) === team) || {}).player;
-  return `<div class="table-wrap"><table>
-    <thead><tr><th class="l">${esc(teamName(team))} pitching</th><th title="Starting pitcher">SP</th>
-      ${PIT_INPUT_KEYS.map(c => `<th>${c.toUpperCase()}</th>`).join('')}<th>Dec</th></tr></thead>
-    <tbody>${order.map(pid => {
-      const l = lines.find(x => x.player === pid && lineTeam(x) === team) || {};
-      return `<tr><td class="l">${esc(adminPlayerName(pid))}</td>
-        <td><input type="radio" name="sp-${esc(team)}" data-sp="${esc(team)}" value="${esc(pid)}" ${pid === starter ? 'checked' : ''}></td>
-        ${PIT_INPUT_KEYS.map(k => k === 'ip'
-          ? `<td><input class="stat-input" type="text" inputmode="decimal" placeholder="0.0" data-kind="pit" data-team="${esc(team)}" data-player="${esc(pid)}" data-key="ip" value="${esc(l.ip ?? '')}"></td>`
-          : `<td><input class="stat-input" type="number" min="0" inputmode="numeric" data-kind="pit" data-team="${esc(team)}" data-player="${esc(pid)}" data-key="${k}" value="${l[k] ?? ''}"></td>`).join('')}
-        <td><select data-kind="pit" data-team="${esc(team)}" data-player="${esc(pid)}" data-key="dec">
-          ${['', 'W', 'L', 'S'].map(d => `<option value="${d}" ${(l.dec || '').toUpperCase().replace('SV', 'S') === d ? 'selected' : ''}>${d || '-'}</option>`).join('')}
-        </select></td></tr>`;
-    }).join('')}</tbody>
-  </table></div>`;
-}
-
 function gameForm(g) {
   const teamSel = (id, val) => `<select id="${id}">${DB.league.teams.map(t =>
     `<option value="${esc(t.id)}" ${t.id === val ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>`;
@@ -446,16 +419,11 @@ function gameForm(g) {
     <section class="card">
       <div class="card-head"><h2>Box score</h2><button type="button" class="btn secondary" id="box-clear">Clear box score</button></div>
       <p class="muted small">Only fill in rows for players who played — blank rows are ignored. Type 0 where needed (e.g. a player who
-        walked in their only plate appearance has AB 0, BB 1). Innings use baseball notation: 5.1 = 5⅓, 5.2 = 5⅔.
-        Tick “SP” for each team's starting pitcher.</p>
+        walked in their only plate appearance has AB 0, BB 1). </p>
       <div id="checks"></div>
       ${battingInputs(g, g.away)}
       <div style="height:1rem"></div>
       ${battingInputs(g, g.home)}
-      <div style="height:1rem"></div>
-      ${pitchingInputs(g, g.away)}
-      <div style="height:1rem"></div>
-      ${pitchingInputs(g, g.home)}
     </section>
   </form>`;
 }
@@ -468,43 +436,23 @@ function collectGameForm() {
   const val = id => document.getElementById(id).value.trim();
   const before = JSON.stringify(g);
 
-  const lines = (kind, keys) => {
-    const out = [];
-    const rows = new Map();
-    form.querySelectorAll(`[data-kind="${kind}"]`).forEach(el => {
-      const k = `${el.dataset.team}|${el.dataset.player}`;
-      if (!rows.has(k)) rows.set(k, { team: el.dataset.team, player: el.dataset.player, vals: {} });
-      rows.get(k).vals[el.dataset.key] = el.value.trim();
-    });
-    for (const r of rows.values()) {
-      if (!keys.some(k => r.vals[k] !== '' && r.vals[k] !== undefined)) continue;
-      const line = { player: r.player, team: r.team };
-      for (const k of keys) {
-        line[k] = k === 'ip' ? outsToIP(ipToOuts(r.vals[k])) : num(r.vals[k]);
-      }
-      if (kind === 'pit') line.dec = r.vals.dec || '';
-      out.push(line);
-    }
-    return out;
-  };
-  const batting = lines('bat', BAT_KEYS);
-  let pitching = lines('pit', PIT_INPUT_KEYS);
-  // Starting pitcher goes first for their team.
-  for (const team of [g.away, g.home]) {
-    const sp = form.querySelector(`input[data-sp="${CSS.escape(team)}"]:checked`);
-    if (!sp) continue;
-    const i = pitching.findIndex(l => l.team === team && l.player === sp.value);
-    const first = pitching.findIndex(l => l.team === team);
-    if (i > first && first >= 0) {
-      const [line] = pitching.splice(i, 1);
-      pitching.splice(first, 0, line);
-    }
+  // One line per player row with anything filled in; blank rows are skipped.
+  const rows = new Map();
+  form.querySelectorAll('[data-kind="bat"]').forEach(el => {
+    const k = `${el.dataset.team}|${el.dataset.player}`;
+    if (!rows.has(k)) rows.set(k, { team: el.dataset.team, player: el.dataset.player, vals: {} });
+    rows.get(k).vals[el.dataset.key] = el.value.trim();
+  });
+  const batting = [];
+  for (const r of rows.values()) {
+    if (!BAT_KEYS.some(k => r.vals[k])) continue;
+    const line = { player: r.player, team: r.team };
+    for (const k of BAT_KEYS) line[k] = num(r.vals[k]);
+    batting.push(line);
   }
-  // Keep the away team's pitchers before the home team's.
-  pitching = pitching.filter(l => l.team === val('g-away')).concat(pitching.filter(l => l.team !== val('g-away')));
 
   const known = ['id', 'date', 'time', 'location', 'away', 'home', 'type', 'innings', 'status', 'awayScore', 'homeScore',
-    'inningsPlayed', 'mercy', 'notes', 'batting', 'pitching'];
+    'inningsPlayed', 'mercy', 'notes', 'batting'];
   const extra = Object.fromEntries(Object.entries(g).filter(([k]) => !known.includes(k)));
   const next = { id: g.id, date: val('g-date'), time: val('g-time'), location: val('g-location'), away: val('g-away'), home: val('g-home') };
   if (val('g-type') !== 'regular') next.type = val('g-type');
@@ -518,7 +466,6 @@ function collectGameForm() {
   if (document.getElementById('g-mercy').checked) next.mercy = true;
   if (val('g-notes')) next.notes = val('g-notes');
   if (batting.length) next.batting = batting;
-  if (pitching.length) next.pitching = pitching;
   Object.assign(next, extra);
 
   if (JSON.stringify(next) !== before) {
@@ -538,31 +485,21 @@ function gameProblems(g) {
   if (g.away === g.home) problems.push('Away and home team are the same.');
   if (g.status === 'final') {
     if (g.awayScore === undefined || g.homeScore === undefined) problems.push('Status is Final but the score is missing.');
-  } else if (g.batting || g.pitching) {
+  } else if (g.batting) {
     problems.push('Box score entered but status is not Final — stats only count once the game is marked Final.');
   }
   if (g.mercy && g.status !== 'final') problems.push('Mercy rule is checked but the game is not marked Final.');
   if (g.mercy && g.inningsPlayed && g.inningsPlayed > scheduledInningsAdmin(g)) problems.push('A mercy-rule game can\'t go longer than its scheduled innings.');
-  if (!g.batting && !g.pitching) return problems;
-  for (const [team, opp, score, oppScore] of [[g.away, g.home, g.awayScore, g.homeScore], [g.home, g.away, g.homeScore, g.awayScore]]) {
-    const bat = (g.batting || []).filter(l => l.team === team);
-    const pit = (g.pitching || []).filter(l => l.team === team);
-    const oppBat = (g.batting || []).filter(l => l.team === opp);
-    const name = teamName(team);
-    const sum = (arr, k) => arr.reduce((s, l) => s + num(l[k]), 0);
-    if (bat.length && score !== undefined && sum(bat, 'r') !== num(score)) problems.push(`${name}: batters' runs add up to ${sum(bat, 'r')}, but the score says ${num(score)}.`);
-    if (pit.length && oppScore !== undefined && sum(pit, 'r') !== num(oppScore)) problems.push(`${name}: pitchers allowed ${sum(pit, 'r')} runs, but ${teamName(opp)} scored ${num(oppScore)}.`);
-    if (pit.length && oppBat.length && sum(pit, 'h') !== sum(oppBat, 'h')) problems.push(`${name}: pitchers allowed ${sum(pit, 'h')} hits, but ${teamName(opp)} batters have ${sum(oppBat, 'h')}.`);
+  if (!g.batting) return problems;
+  for (const [team, score] of [[g.away, g.awayScore], [g.home, g.homeScore]]) {
+    const bat = g.batting.filter(l => l.team === team);
+    const runs = bat.reduce((sum, l) => sum + num(l.r), 0);
+    if (bat.length && score !== undefined && runs !== num(score)) problems.push(`${teamName(team)}: batters' runs add up to ${runs}, but the score says ${num(score)}.`);
     for (const l of bat) {
       const xbh = num(l['2b']) + num(l['3b']) + num(l.hr);
       if (xbh > num(l.h)) problems.push(`${adminPlayerName(l.player)}: more extra-base hits than hits.`);
       if (num(l.h) > num(l.ab)) problems.push(`${adminPlayerName(l.player)}: more hits than at-bats.`);
     }
-    for (const l of pit) if (num(l.er) > num(l.r)) problems.push(`${adminPlayerName(l.player)}: more earned runs than runs.`);
-  }
-  if (g.status === 'final' && g.pitching && num(g.awayScore) !== num(g.homeScore)) {
-    const decs = g.pitching.map(l => l.dec);
-    if (decs.filter(d => d === 'W').length !== 1 || decs.filter(d => d === 'L').length !== 1) problems.push('Pitching decisions: expected exactly one W and one L.');
   }
   return problems;
 }
@@ -579,11 +516,9 @@ function updateChecks() {
     }
   }
   const problems = gameProblems(g);
-  const badIP = [...form.querySelectorAll('[data-key="ip"]')].filter(i => i.value.trim() && !/^\d+(\.[0-2])?$/.test(i.value.trim()));
-  if (badIP.length) problems.push('Innings pitched must look like 6, 5.1 or 5.2.');
   document.getElementById('checks').innerHTML = problems.length
     ? `<div class="notice"><strong>Double-check:</strong><ul style="margin:.3rem 0 0;padding-left:1.2rem">${problems.map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>`
-    : (g.batting || g.pitching ? '<p class="ok-text small">✓ Box score adds up.</p>' : '');
+    : (g.batting ? '<p class="ok-text small">✓ Box score adds up.</p>' : '');
 }
 
 // Applies local edits (changed + deleted games) on top of a base list.
@@ -687,7 +622,7 @@ function renderRostersTab() {
   });
   table.querySelectorAll('[data-del]').forEach(b => (b.onclick = () => {
     const p = admin.players[Number(b.dataset.del)];
-    const played = admin.games.some(g => (g.batting || []).concat(g.pitching || []).some(l => l.player === p.id));
+    const played = admin.games.some(g => (g.batting || []).some(l => l.player === p.id));
     const msg = played
       ? `${p.name} has stats in past games. Removing them from the roster will make those stats show their ID instead of their name.\n\nTo keep their history, consider leaving them listed. Remove anyway?`
       : `Remove ${p.name} from the roster?`;

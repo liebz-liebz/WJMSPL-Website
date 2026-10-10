@@ -6,10 +6,8 @@
     "singleGame": 9,
     "doubleheader": 6
   },
-  "inningsPerGame": 9,
   "leaderMinimums": {
-    "plateAppearancesPerTeamGame": 2.0,
-    "inningsPitchedPerTeamGame": 1.0
+    "plateAppearancesPerTeamGame": 2.0
   },
   "github": {
     "owner": "liebz-liebz",
