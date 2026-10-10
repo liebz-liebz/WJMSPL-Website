@@ -10,7 +10,7 @@ standings, player stats and leaders automatically from the game results:
 | `data/league.json` | League name, season, teams (name, abbreviation, colour), settings |
 | `data/players.json` | Every player: name, jersey number, team |
 | `data/games.json` | The schedule, final scores, and (optionally) each game's box score |
-| `data/admin.json` | Created by the admin setup: the GitHub connection, locked with the admin password |
+| `data/admin.json` | Created by the admin setup: the GitHub connection, locked with the admin password and secret key |
 
 > The data that ships with the site is **made-up sample data** so you can see how everything looks.
 > Replace it with your real teams, players and schedule before the season (see below).
@@ -42,19 +42,26 @@ edit **Scheduled innings** on the admin page. To change the league defaults, edi
 ### One-time setup (site owner)
 
 The website is stored on GitHub, so saving needs a GitHub access token. The owner sets it up once, and it gets stored
-in `data/admin.json`, encrypted with the admin password. Everyone else only ever needs the password.
+in `data/admin.json`, encrypted. Two passwords unlock it:
+
+- the **admin password**, shared with everyone who enters results, and
+- the **super secret key**, known only to the owner. It's required to change the admin password, change the secret key,
+  or replace the GitHub token. It also signs in, so the owner can always get back in and reset a forgotten admin password.
 
 1. Open the website's **League admin** page. Before setup, it shows the setup form.
 2. Follow the steps on that page to create a [fine-grained token](https://github.com/settings/personal-access-tokens/new)
    with access to only this repository and **Contents: Read and write**. Pick the longest expiration allowed.
-3. Paste the token, choose the admin password, and click **Connect & save**.
+3. Paste the token, choose the admin password and the super secret key, and click **Connect & save**.
 
-Later, under League admin → **Settings**, you can change the password or enter a new token when the old one expires.
-If the token expires, the admin page shows a message saying so.
+Later, under League admin → **Settings**, the owner can change either password or enter a new token when the old one
+expires (other signed-in admins pick up the new token automatically). If the token expires, the admin page says so.
+Sites set up before the secret key existed show a **Set the super secret key** form in Settings; do that once.
 
-**About security:** the password is the only thing stopping someone from editing the league data, so pick one
-that's hard to guess (three or four random words works well) and change it if it leaks. Every save is recorded in
-the GitHub history, so any bad edit can be undone. The token can only change this one repository.
+**About security:** the admin password is what stops people from editing the league data, so pick one that's hard to
+guess (three or four random words works well) and change it if it leaks. The secret key stops admins from changing
+passwords through the admin page; it isn't a hard barrier against a technical admin, because a signed-in browser holds
+the GitHub token in order to save. Every save is recorded in the GitHub history, so any bad edit can be undone.
+The token can only change this one repository.
 
 ## Other common edits
 
@@ -123,7 +130,8 @@ index.html        page shell + navigation
 css/style.css     all styling (colors are at the top)
 js/data.js        loads data files; computes standings, stats, leaders
 js/app.js         public pages: home, schedule (list + calendar), standings, rosters, stats, leaders, box scores, player pages
-js/admin.js       League admin page (password sign-in, results entry, rosters, settings)
+js/admin.js       League admin page (sign-in, results entry, rosters)
+js/admin-lock.js  admin password + super secret key (data/admin.json) and the Settings tab
 js/admin-schedule.js  League admin → Schedule tab (add, paste and edit games)
 data/*.json       the league's data
 ```

@@ -2,11 +2,10 @@
 // the data files to the website.
 //
 // How saving works without everyone needing a GitHub account: the site owner sets up a GitHub
-// access token once. It is stored in data/admin.json, encrypted with the admin password.
-// Anyone who knows the password can unlock it in their browser and save changes.
+// access token once. It is stored in data/admin.json, encrypted so the admin password (or the
+// owner's super secret key) unlocks it in the browser. See admin-lock.js.
 
 const SESSION_KEY = 'wjmspl-admin-session';
-const PBKDF2_ITERATIONS = 600000;
 
 const admin = {
   creds: null, // { token, owner, repo, branch } once unlocked
@@ -79,16 +78,25 @@ function defaultGameId() {
 // Load the latest data straight from GitHub so admins never edit a stale copy of the site.
 async function loadAdminData() {
   admin.loadError = null;
-  try {
-    const [games, players, league] = await Promise.all(['data/games.json', 'data/players.json', 'data/league.json']
-      .map(async p => JSON.parse((await ghReadFile(admin.creds, p)).text)));
-    setData(league, players, games);
-    applyLeagueInfo();
-    initAdminData(games, players);
-  } catch (e) {
-    admin.loadError = e.message;
-    initAdminData(DB.games, DB.players);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await loadFromGitHub();
+      return;
+    } catch (e) {
+      if (attempt === 0 && e.status === 401 && await refreshTokenFromLock()) continue;
+      admin.loadError = e.message;
+      initAdminData(DB.games, DB.players);
+      return;
+    }
   }
+}
+
+async function loadFromGitHub() {
+  const [games, players, league] = await Promise.all(['data/games.json', 'data/players.json', 'data/league.json']
+    .map(async p => JSON.parse((await ghReadFile(admin.creds, p)).text)));
+  setData(league, players, games);
+  applyLeagueInfo();
+  initAdminData(games, players);
 }
 
 window.addEventListener('beforeunload', e => {
@@ -168,7 +176,7 @@ async function renderSignIn() {
     btn.disabled = true;
     btn.textContent = 'Checking…';
     try {
-      const creds = await decryptCreds(lock, document.getElementById('pw').value);
+      const creds = await unlock(lock, document.getElementById('pw').value);
       admin.creds = creds;
       storeSession(creds, document.getElementById('remember').checked);
       renderAdmin();
@@ -187,7 +195,9 @@ function renderFirstSetup() {
     <section class="card narrow">
       <h1>Set up League Admin</h1>
       <p>This is a one-time setup for the site owner. It connects the admin page to GitHub (where the website is stored)
-        and sets the password everyone else will use. After this, entering results needs only the password, not a GitHub account.</p>
+        and sets two passwords: the <strong>admin password</strong> everyone who enters results will use, and a
+        <strong>super secret key</strong> only you know, which is needed to change the admin password or the GitHub connection.
+        After this, entering results needs only the admin password, not a GitHub account.</p>
       <h2>1. Create a GitHub token</h2>
       <ol>
         <li>Signed in to GitHub, open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">New fine-grained token</a>.</li>
@@ -196,7 +206,7 @@ function renderFirstSetup() {
         <li><strong>Permissions → Repository permissions → Contents:</strong> <em>Read and write</em>.</li>
         <li>Click <strong>Generate token</strong> and copy it.</li>
       </ol>
-      <h2>2. Connect and choose the admin password</h2>
+      <h2>2. Connect and choose the passwords</h2>
       <form id="setup" class="form-stack">
         <label class="field">GitHub token<input type="password" id="su-token" placeholder="github_pat_…" autocomplete="off" required></label>
         <div class="form-grid">
@@ -206,27 +216,39 @@ function renderFirstSetup() {
         </div>
         <div class="form-grid">
           <label>Admin password<input type="password" id="su-pw" autocomplete="new-password" required minlength="8"></label>
-          <label>Confirm password<input type="password" id="su-pw2" autocomplete="new-password" required></label>
+          <label>Confirm admin password<input type="password" id="su-pw2" autocomplete="new-password" required></label>
+        </div>
+        <div class="form-grid">
+          <label>Super secret key<input type="password" id="su-secret" autocomplete="new-password" required minlength="8"></label>
+          <label>Confirm super secret key<input type="password" id="su-secret2" autocomplete="new-password" required></label>
         </div>
         <div id="setup-msg"></div>
         <button class="btn" type="submit">Connect &amp; save</button>
       </form>
-      <p class="muted small">Pick a password that's hard to guess (e.g. three or four random words). It's the only thing protecting the
-        site's data from edits. If it ever leaks, change it under Settings. Every save is recorded on GitHub, so anything can be undone.</p>
+      <p class="muted small">Pick passwords that are hard to guess (e.g. three or four random words). The admin password is what protects
+        the site's data from edits; if it ever leaks, change it under Settings using the secret key. Every save is recorded on GitHub,
+        so anything can be undone.</p>
     </section>`;
   document.getElementById('setup').onsubmit = async e => {
     e.preventDefault();
     const v = id => document.getElementById(id).value.trim();
     const msg = document.getElementById('setup-msg');
-    if (v('su-pw') !== v('su-pw2')) { msg.innerHTML = '<p class="warn">The passwords don\'t match.</p>'; return; }
+    try {
+      checkNewPassword(v('su-pw'), v('su-pw2'), 'admin password');
+      checkNewPassword(v('su-secret'), v('su-secret2'), 'super secret key');
+      if (v('su-pw') === v('su-secret')) throw new Error('Use a super secret key that is different from the admin password.');
+    } catch (err) {
+      msg.innerHTML = `<p class="warn">${esc(err.message)}</p>`;
+      return;
+    }
     const creds = { token: v('su-token'), owner: v('su-owner'), repo: v('su-repo'), branch: v('su-branch') };
     const btn = e.target.querySelector('button');
     btn.disabled = true;
     msg.innerHTML = '<p class="muted">Connecting…</p>';
     try {
-      await saveLockFile(creds, v('su-pw'), 'Set up league admin password');
-      admin.creds = creds;
-      storeSession(creds, true);
+      const session = await createLock(creds, v('su-pw'), v('su-secret'));
+      admin.creds = session;
+      storeSession(session, true);
       admin.message = { kind: 'ok', html: '<strong>All set!</strong> Share the website link and the admin password with whoever enters results. They sign in using <em>League admin</em> at the bottom of any page.' };
       renderAdmin();
     } catch (err) {
@@ -705,76 +727,6 @@ async function savePlayersToGitHub() {
   }
 }
 
-// ---------- settings tab ----------
-
-function renderSettingsTab() {
-  const c = admin.creds;
-  document.getElementById('admin-body').innerHTML = `
-    <section class="card">
-      <h2>Who can update the site</h2>
-      <p>Anyone with the admin password. Send them the website link and the password; they click
-        <strong>League admin</strong> at the bottom of any page and sign in. No GitHub account needed.</p>
-    </section>
-    <section class="card">
-      <h2>Change the admin password</h2>
-      <p class="muted small">Everyone currently signed in stays signed in. New sign-ins need the new password
-        (it takes a few minutes for the change to reach the live site).</p>
-      <form id="pw-form" class="form-stack">
-        <div class="form-grid">
-          <label>New password<input type="password" id="np" autocomplete="new-password" required minlength="8"></label>
-          <label>Confirm new password<input type="password" id="np2" autocomplete="new-password" required></label>
-        </div>
-        <div><button class="btn" type="submit">Change password</button></div>
-      </form>
-    </section>
-    <section class="card">
-      <h2>GitHub connection <span class="muted small">(site owner)</span></h2>
-      <p>Saving to <code>${esc(c.owner)}/${esc(c.repo)}</code> on branch <code>${esc(c.branch)}</code>.
-        GitHub tokens expire; when this one does, saving stops working until the owner creates a new token
-        (same steps as the first setup: <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">new fine-grained token</a>,
-        this repository only, <em>Contents: Read and write</em>) and enters it here.</p>
-      <form id="tok-form" class="form-stack">
-        <div class="form-grid">
-          <label style="grid-column:1/-1">New GitHub token<input type="password" id="nt" placeholder="github_pat_…" autocomplete="off" required></label>
-          <label>Admin password (current or new)<input type="password" id="tp" autocomplete="new-password" required minlength="8"></label>
-          <label>Confirm password<input type="password" id="tp2" autocomplete="new-password" required></label>
-        </div>
-        <div><button class="btn" type="submit">Update token</button></div>
-      </form>
-    </section>`;
-
-  const run = async (form, creds, pw, pw2, commitMsg, okMsg) => {
-    if (pw !== pw2) return showMessage("The passwords don't match.");
-    setBusy(true);
-    try {
-      await saveLockFile(creds, pw, commitMsg);
-      admin.creds = creds;
-      // Keep this device signed in with the (possibly new) token.
-      let remembered = false;
-      try { remembered = !!localStorage.getItem(SESSION_KEY); } catch { /* storage blocked */ }
-      storeSession(creds, remembered);
-      form.reset();
-      showMessage(okMsg, 'ok');
-      if (admin.loadError) { admin.ready = false; admin.message = { kind: 'ok', html: okMsg }; renderAdmin(); }
-    } catch (e) {
-      showMessage(`<strong>Couldn't save:</strong> ${esc(e.message)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-  document.getElementById('pw-form').onsubmit = e => {
-    e.preventDefault();
-    run(e.target, admin.creds, document.getElementById('np').value, document.getElementById('np2').value,
-      'Change league admin password', '<strong>Password changed.</strong> Remember to tell the other admins.');
-  };
-  document.getElementById('tok-form').onsubmit = e => {
-    e.preventDefault();
-    run(e.target, { ...admin.creds, token: document.getElementById('nt').value.trim() },
-      document.getElementById('tp').value, document.getElementById('tp2').value,
-      'Update league admin GitHub token', '<strong>GitHub token updated.</strong> Saving works again.');
-  };
-}
-
 // ---------- GitHub + file helpers ----------
 
 async function ghFetch(cfg, path, opts = {}) {
@@ -830,7 +782,7 @@ async function ghUpdateFile(cfg, path, transform, message) {
     } catch (e) {
       if (e.status !== 404) throw e;
     }
-    const next = transform(file ? file.text : null);
+    const next = await transform(file ? file.text : null);
     try {
       await ghFetch(cfg, base, {
         method: 'PUT',
@@ -841,49 +793,6 @@ async function ghUpdateFile(cfg, path, transform, message) {
       if ((e.status === 409 || e.status === 422) && attempt === 0) continue;
       throw e;
     }
-  }
-}
-
-// ---------- admin password lock ----------
-// data/admin.json holds the GitHub connection encrypted with the admin password (AES-GCM, key from PBKDF2).
-
-function bytesToB64(bytes) {
-  let bin = '';
-  bytes.forEach(b => (bin += String.fromCharCode(b)));
-  return btoa(bin);
-}
-function b64ToBytes(b64) {
-  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-}
-async function passwordKey(password, salt, iterations) {
-  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, base,
-    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-}
-async function encryptCreds(creds, password) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await passwordKey(password, salt, PBKDF2_ITERATIONS);
-  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(creds)));
-  return { version: 1, iterations: PBKDF2_ITERATIONS, salt: bytesToB64(salt), iv: bytesToB64(iv), data: bytesToB64(new Uint8Array(data)) };
-}
-// Throws if the password is wrong.
-async function decryptCreds(lock, password) {
-  const key = await passwordKey(password, b64ToBytes(lock.salt), lock.iterations);
-  const data = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64ToBytes(lock.iv) }, key, b64ToBytes(lock.data));
-  return JSON.parse(new TextDecoder().decode(data));
-}
-
-// Encrypts the GitHub connection with the password and commits it. Doubles as a check that the token can write.
-async function saveLockFile(creds, password, message) {
-  if (!password || password.length < 8) throw new Error('The password must be at least 8 characters.');
-  if (!creds.token) throw new Error('Enter a GitHub token.');
-  const lock = await encryptCreds(creds, password);
-  try {
-    await ghUpdateFile(creds, 'data/admin.json', () => JSON.stringify(lock, null, 2) + '\n', message);
-  } catch (e) {
-    if (e.status === 403) throw new Error(`The token can't write to ${creds.owner}/${creds.repo}. Make sure it has access to that repository with Contents set to “Read and write”.`);
-    throw e;
   }
 }
 
